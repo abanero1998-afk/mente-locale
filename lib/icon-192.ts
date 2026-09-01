@@ -1,1 +1,2 @@
-export const icon192 = "COMPRESSED_PLACEHOLDER";
+import { logoMark } from "./logo-mark";
+export const icon192 = logoMark;
