@@ -23,8 +23,8 @@ self.addEventListener("message", (event) => {
     event.waitUntil(
       self.registration.showNotification(data.title || "Mente Locale", {
         body: data.body || "",
-        icon: "/icons/icon-192.jpg",
-        badge: "/icons/icon-192.jpg",
+        icon: "/api/logo?s=192",
+        badge: "/api/logo?s=192",
         tag: data.tag || "kds",
         renotify: true,
         silent: false,

@@ -8,10 +8,10 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [
-      { url: "/icons/icon-192.jpg", sizes: "192x192", type: "image/jpeg" },
-      { url: "/icons/icon-512.jpg", sizes: "512x512", type: "image/jpeg" },
+      { url: "/api/logo?s=192", sizes: "192x192", type: "image/jpeg" },
+      { url: "/api/logo?s=512", sizes: "192x192", type: "image/jpeg" },
     ],
-    apple: [{ url: "/icons/icon-180.jpg", sizes: "180x180" }],
+    apple: [{ url: "/api/logo?s=180", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="it">
       <head>
-        <link rel="apple-touch-icon" href="/icons/icon-180.jpg" />
+        <link rel="apple-touch-icon" href="/api/logo?s=180" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="Mente Locale" />
