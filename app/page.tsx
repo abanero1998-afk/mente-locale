@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Reparto = "cucina" | "bar";
 type StatoTavolo = "libero" | "occupato" | "prenotato" | "conto";
@@ -12,12 +12,12 @@ type Ordine = { id: string; piatto: Piatto; qta: number; note?: string; stato: S
 type Tavolo = { id: number; nome: string; posti: number; stato: StatoTavolo; x: number; y: number; clienti: number; cameriere: string; ordini: Ordine[]; tempo: number; animazione?: "pulse" | "none" };
 
 const MENU: Piatto[] = [
-  { id: "1", nome: "Carbonara", prezzo: 16, reparto: "cucina", categoria: "Primi", img: "\uD83C\uDF5D" },
-  { id: "2", nome: "Tagliata", prezzo: 28, reparto: "cucina", categoria: "Secondi", img: "\uD83E\uDD69" },
-  { id: "3", nome: "Negroni", prezzo: 10, reparto: "bar", categoria: "Cocktail", img: "\uD83C\uDF78" },
-  { id: "4", nome: "Tiramisu", prezzo: 8, reparto: "cucina", categoria: "Dolci", img: "\uD83C\uDF70" },
-  { id: "5", nome: "Spritz", prezzo: 9, reparto: "bar", categoria: "Cocktail", img: "\uD83C\uDF79" },
-  { id: "6", nome: "Cacio Pepe", prezzo: 15, reparto: "cucina", categoria: "Primi", img: "\uD83E\uDDC0" },
+  { id: "1", nome: "Carbonara", prezzo: 16, reparto: "cucina", categoria: "Primi", img: "P" },
+  { id: "2", nome: "Tagliata", prezzo: 28, reparto: "cucina", categoria: "Secondi", img: "S" },
+  { id: "3", nome: "Negroni", prezzo: 10, reparto: "bar", categoria: "Cocktail", img: "B" },
+  { id: "4", nome: "Tiramisu", prezzo: 8, reparto: "cucina", categoria: "Dolci", img: "D" },
+  { id: "5", nome: "Spritz", prezzo: 9, reparto: "bar", categoria: "Cocktail", img: "B" },
+  { id: "6", nome: "Cacio Pepe", prezzo: 15, reparto: "cucina", categoria: "Primi", img: "P" },
 ];
 
 const PRENOTAZIONI = [
@@ -57,20 +57,37 @@ function makeTavoli(): Tavolo[] {
 
 function playFile(src: string, fallbackHz = 800) {
   const audio = new Audio(src);
-  audio.volume = 0.45;
+  audio.volume = 0.55;
   audio.play().catch(() => {
     try {
       const ctx = new AudioContext();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.frequency.value = fallbackHz;
-      gain.gain.value = 0.06;
+      gain.gain.value = 0.08;
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
-      osc.stop(ctx.currentTime + 0.15);
+      osc.stop(ctx.currentTime + 0.18);
     } catch {}
   });
+}
+
+async function notifyKds(piatto: Piatto, tavoloNome: string) {
+  const title = `KDS ${piatto.reparto.toUpperCase()}`;
+  const body = `${piatto.nome} → ${tavoloNome}`;
+  playFile(piatto.reparto === "bar" ? "/sounds/ding-pronto.wav" : "/sounds/beep-nuovo.wav", piatto.reparto === "bar" ? 980 : 800);
+  try {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") await Notification.requestPermission();
+    if (Notification.permission !== "granted") return;
+    const reg = await navigator.serviceWorker?.ready;
+    if (reg?.active) {
+      reg.active.postMessage({ type: "NOTIFY", title, body, tag: `kds-${piatto.reparto}`, url: "/?tab=kds" });
+    } else {
+      new Notification(title, { body, icon: "/icons/icon-192.jpg", tag: `kds-${piatto.reparto}` });
+    }
+  } catch {}
 }
 
 function Icon({ name, active }: { name: string; active?: boolean }) {
@@ -95,6 +112,21 @@ export default function App() {
   const [lotto, setLotto] = useState("L12345");
   const [dataApertura, setDataApertura] = useState("2026-09-01");
   const [iaOk, setIaOk] = useState(false);
+  const [installEvt, setInstallEvt] = useState<any>(null);
+  const [notifOn, setNotifOn] = useState(false);
+  const swOnce = useRef(false);
+
+  useEffect(() => {
+    if (swOnce.current) return;
+    swOnce.current = true;
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+    const onPrompt = (e: Event) => { e.preventDefault(); setInstallEvt(e); };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    if ("Notification" in window) setNotifOn(Notification.permission === "granted");
+    const q = new URLSearchParams(window.location.search).get("tab") as Tab | null;
+    if (q) setTab(q);
+    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+  }, []);
 
   const occupati = tavoli.filter((t) => t.stato !== "libero").length;
   const tuttiOrdini = tavoli.flatMap((t) => t.ordini.map((o) => ({ ...o, tavolo: t.nome, tavoloId: t.id })));
@@ -111,7 +143,6 @@ export default function App() {
 
   const animaTavolo = (id: number) => {
     setTavoli((prev) => prev.map((t) => (t.id === id ? { ...t, animazione: "pulse" } : t)));
-    playFile("/sounds/beep-nuovo.wav", 800);
     setTimeout(() => setTavoli((prev) => prev.map((t) => (t.id === id ? { ...t, animazione: "none" } : t))), 2000);
   };
 
@@ -120,6 +151,8 @@ export default function App() {
     setTavoli((prev) => prev.map((t) => (t.id === tavoloId ? { ...t, ordini: [...t.ordini, nuovoOrdine], stato: "occupato" } : t)));
     setSelezionato((prev) => (prev?.id === tavoloId ? { ...prev, ordini: [...prev.ordini, nuovoOrdine], stato: "occupato" } : prev));
     animaTavolo(tavoloId);
+    const tav = tavoli.find((t) => t.id === tavoloId);
+    void notifyKds(piatto, tav?.nome || `T${String(tavoloId).padStart(2, "0")}`);
   };
 
   const setOrdineStato = (ordineId: string, stato: StatoOrdine) => {
@@ -139,20 +172,23 @@ export default function App() {
         @keyframes glow-cyan { 0%,100%{box-shadow:0 0 20px rgba(0,217,255,0.2),inset 0 1px 1px rgba(255,255,255,0.1)} 50%{box-shadow:0 0 40px rgba(0,217,255,0.4),inset 0 1px 1px rgba(255,255,255,0.15)} }
         .carbon-bg { background-color:#070707; background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 4px), repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 4px); background-size: 4px 4px, 4px 4px; }
         .glass { backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,26,26,0.08); }
-        .glass-strong { backdrop-filter: blur(60px); -webkit-backdrop-filter: blur(60px); background: rgba(0,0,0,0.62); border: 0.5px solid rgba(255,26,26,0.12); box-shadow: inset 0 1px 1px rgba(255,255,255,0.08), 0 20px 80px rgba(0,0,0,0.9), 0 0 20px rgba(255,26,26,0.05); }
+        .glass-strong { backdrop-filter: blur(60px); -webkit-backdrop-filter: blur(60px); background: rgba(0,0,0,0.62); border: 0.5px solid rgba(255,26,26,0.12); box-shadow: inset 0 1px 1px rgba(255,255,255,0.08), 0 20px 80px rgba(0,0,0,0.9); }
         .nav-pill { background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(8,8,8,0.55)); border: 1px solid rgba(255,70,70,0.28); box-shadow: 0 0 0 1px rgba(255,26,26,0.18), 0 0 24px rgba(255,26,26,0.16), inset 0 1px 0 rgba(255,255,255,0.22); }
       `}</style>
       <div className="absolute inset-0 carbon-bg opacity-50" />
-      <div className="absolute inset-0 bg-gradient-to-br from-[#FF1A1A]/[0.05] via-transparent to-[#00D9FF]/[0.03]" />
-      <header className="relative z-20 p-5 flex justify-between border-b border-[#FF1A1A]/10 glass">
+      <header className="relative z-20 p-5 flex justify-between items-center border-b border-[#FF1A1A]/10 glass">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full glass flex items-center justify-center">ML</div>
+          <img src="/logo-mark.jpg" alt="Mente Locale" className="w-11 h-11 rounded-2xl object-cover border border-[#FF1A1A]/35 shadow-[0_0_16px_rgba(255,26,26,0.35)]" />
           <div>
             <p className="font-black text-[13px] tracking-[0.25em]">MENTE LOCALE</p>
             <p className="text-[9px] text-white/30 tracking-widest">CARBON EDITION • 20 TAVOLI</p>
           </div>
         </div>
-        <div className="text-[10px] text-white/40 self-center">LIVE • {occupati}/20 OCCUPATI</div>
+        <div className="flex items-center gap-2">
+          {!notifOn && <button onClick={async () => { const p = await Notification.requestPermission(); setNotifOn(p === "granted"); }} className="text-[9px] tracking-widest px-3 py-1.5 rounded-full glass">ATTIVA PUSH</button>}
+          {installEvt && <button onClick={async () => { installEvt.prompt(); await installEvt.userChoice; setInstallEvt(null); }} className="text-[9px] tracking-widest px-3 py-1.5 rounded-full bg-[#FF1A1A] text-black font-black">INSTALLA</button>}
+          <div className="text-[10px] text-white/40">LIVE • {occupati}/20</div>
+        </div>
       </header>
       <main className="relative z-10 p-4 pb-32 max-w-[920px] mx-auto">
         {tab === "tavoli" && (
@@ -166,9 +202,6 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[9px] text-white/30">
-              <div>LIBERO</div><div>OCCUPATO</div><div>PRENOTATO</div><div>PULSE ORDINE</div>
-            </div>
           </>
         )}
         {tab === "dashboard" && (
@@ -181,14 +214,13 @@ export default function App() {
         {tab === "prenotazioni" && (
           <div className="space-y-3">{PRENOTAZIONI.map((p) => (<div key={p.nome} className="rounded-2xl glass p-4 flex justify-between"><div><p className="font-bold">{p.nome}</p><p className="text-xs text-white/40">{p.dettagli}</p></div><span className="text-[10px]">{p.stato}</span></div>))}</div>
         )}
-        {tab === "analisi" && (<div className="rounded-[28px] glass-strong p-5"><h2 className="font-black">ANALISI SERATA</h2><p className="text-sm text-white/60 mt-2">Coperti 42 • ticket medio 29,50 • top Carbonara</p></div>)}
+        {tab === "analisi" && (<div className="rounded-[28px] glass-strong p-5"><h2 className="font-black">ANALISI SERATA</h2><p className="text-sm text-white/60 mt-2">Coperti 42 • ticket medio 29,50</p></div>)}
         {tab === "magazzino" && (<div className="space-y-2">{[["Mozzarella","2.4 kg","sotto scorta"],["Guanciale","1.8 kg","ok"]].map(([n,q,s]) => (<div key={n} className="glass rounded-2xl p-4 flex justify-between"><span>{n} • {q}</span><span className="text-[10px]">{s}</span></div>))}</div>)}
         {tab === "haccp" && (
           <div className="rounded-[28px] glass-strong p-5">
             <h2 className="font-black mb-3">HACCP PRO</h2>
             <input value={prodotto} onChange={(e) => setProdotto(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 w-full mb-2 text-xs" />
             <input value={lotto} onChange={(e) => setLotto(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 w-full mb-2 text-xs" />
-            <input type="date" value={dataApertura} onChange={(e) => setDataApertura(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 w-full text-xs" />
             <div className="mt-3 p-3 bg-white text-black rounded-xl text-[10px] font-mono"><p className="uppercase font-bold">{prodotto}</p><p>Aperto: {labelPreview.open} - Scad: {labelPreview.scad}</p><p>Lotto: {lotto}</p></div>
           </div>
         )}
@@ -210,7 +242,7 @@ export default function App() {
         {tab === "ia" && (
           <div className="rounded-[28px] glass-strong p-5">
             <h2 className="font-black">MENTE LOCALE IA</h2>
-            <p className="text-sm text-white/70 mt-3">{iaOk ? "Ordine inviato a Rossi." : "Per sabato servono 4kg di mozzarella in piu. Ordino da Rossi?"}</p>
+            <p className="text-sm text-white/70 mt-3">{iaOk ? "Ordine inviato a Rossi." : "Per sabato servono 4kg di mozzarella in piu."}</p>
             {!iaOk && <button onClick={() => setIaOk(true)} className="text-xs bg-white text-black px-4 py-2 rounded-full font-black mt-4">Si, ordina</button>}
           </div>
         )}
@@ -221,18 +253,17 @@ export default function App() {
             <div className="p-5 flex justify-between border-b border-white/5">
               <div>
                 <h2 className="text-xl font-black">{selezionato.nome} • {selezionato.clienti} persone • {selezionato.cameriere}</h2>
-                <p className="text-xs text-white/40">Totale EUR {selezionato.ordini.reduce((s, o) => s + o.piatto.prezzo * o.qta, 0)} • {selezionato.ordini.length} piatti</p>
+                <p className="text-xs text-white/40">Totale EUR {selezionato.ordini.reduce((s, o) => s + o.piatto.prezzo * o.qta, 0)}</p>
               </div>
               <button onClick={() => setSelezionato(null)} className="w-9 h-9 rounded-full glass">X</button>
             </div>
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
               {selezionato.ordini.map((o) => (<div key={o.id} className="flex justify-between p-3 rounded-2xl glass"><span>{o.qta}x {o.piatto.nome} - {o.piatto.reparto.toUpperCase()}</span><span className="text-xs text-white/50">{o.stato}</span></div>))}
-              {selezionato.ordini.length === 0 && <p className="text-sm text-white/20">Nessun ordine. Tocca il menu.</p>}
               <div className="grid grid-cols-2 gap-2">
                 {MENU.map((p) => (
                   <button key={p.id} onClick={() => aggiungiOrdine(selezionato.id, p)} className="text-left p-3 rounded-2xl glass">
                     <p className="text-sm font-bold">{p.nome}</p>
-                    <p className="text-[9px] text-white/40">{p.categoria} • {p.reparto.toUpperCase()} • EUR {p.prezzo}</p>
+                    <p className="text-[9px] text-white/40">{p.reparto.toUpperCase()} • EUR {p.prezzo}</p>
                   </button>
                 ))}
               </div>
@@ -240,7 +271,7 @@ export default function App() {
             <div className="p-3 grid grid-cols-3 gap-2 border-t border-white/5">
               <button className="py-3 rounded-full glass text-xs">SPOSTA</button>
               <button className="py-3 rounded-full bg-[#00D9FF]/20 border border-[#00D9FF]/30 text-xs font-bold">CONTO DIVISO</button>
-              <button onClick={() => chiudiTavolo(selezionato.id)} className="py-3 rounded-full bg-[#FF1A1A] text-black text-xs font-black">CHIUDI EUR {selezionato.ordini.reduce((s, o) => s + o.piatto.prezzo * o.qta, 0)}</button>
+              <button onClick={() => chiudiTavolo(selezionato.id)} className="py-3 rounded-full bg-[#FF1A1A] text-black text-xs font-black">CHIUDI</button>
             </div>
           </div>
         </div>
