@@ -1,1 +1,1 @@
-export const icon180A = "placeholder";
+export const icon180A = "ok-chunk";
