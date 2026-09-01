@@ -1,139 +1,105 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useMemo, useState } from "react";
 
-type StatoTavolo = "libero" | "occupato" | "prenotato" | "servizio" | "cancellato";
-type Tab = "dashboard" | "tavoli" | "prenotazioni" | "analisi" | "magazzino" | "haccp";
+type Reparto = "cucina" | "bar";
+type StatoTavolo = "libero" | "occupato" | "prenotato" | "conto";
+type StatoOrdine = "ordinato" | "in_prep" | "pronto";
+type Tab = "dashboard" | "tavoli" | "prenotazioni" | "analisi" | "magazzino" | "haccp" | "kds" | "ia";
 
-type Tavolo = {
-  id: string;
-  nome: string;
-  stato: StatoTavolo;
-  persone: number;
-  cliente?: string;
-  tempo?: string;
-  posti: number;
-};
+type Piatto = { id: string; nome: string; prezzo: number; reparto: Reparto; categoria: string; img: string };
+type Ordine = { id: string; piatto: Piatto; qta: number; note?: string; stato: StatoOrdine; ora: string };
+type Tavolo = { id: number; nome: string; posti: number; stato: StatoTavolo; x: number; y: number; clienti: number; cameriere: string; ordini: Ordine[]; tempo: number; animazione?: "pulse" | "none" };
 
-type Piatto = {
-  nome: string;
-  qta: number;
-  reparto: "cucina" | "bar";
-  allergeni?: string[];
-  note?: string;
-};
-
-type Comanda = {
-  id: string;
-  tavolo: string;
-  piatti: Piatto[];
-  stato: "nuovo" | "in_prep" | "pronto";
-  ora: string;
-  cameriere: string;
-};
-
-type Prenotazione = {
-  initials: string;
-  nome: string;
-  vip?: boolean;
-  dettagli: string;
-  stato: "Confermata" | "VIP" | "Cancellata";
-  color: "cyan" | "gold" | "red";
-};
-
-const NAV: { id: Tab; icon: string; label: string }[] = [
-  { id: "dashboard", icon: "⊞", label: "Dashboard" },
-  { id: "tavoli", icon: "⫶", label: "Tavoli" },
-  { id: "prenotazioni", icon: "📅", label: "Prenotazioni" },
-  { id: "analisi", icon: "📊", label: "Analisi" },
-  { id: "magazzino", icon: "📦", label: "Magazzino" },
-  { id: "haccp", icon: "🧊", label: "HACCP" },
+const MENU: Piatto[] = [
+  { id: "1", nome: "Carbonara", prezzo: 16, reparto: "cucina", categoria: "Primi", img: "\uD83C\uDF5D" },
+  { id: "2", nome: "Tagliata", prezzo: 28, reparto: "cucina", categoria: "Secondi", img: "\uD83E\uDD69" },
+  { id: "3", nome: "Negroni", prezzo: 10, reparto: "bar", categoria: "Cocktail", img: "\uD83C\uDF78" },
+  { id: "4", nome: "Tiramisu", prezzo: 8, reparto: "cucina", categoria: "Dolci", img: "\uD83C\uDF70" },
+  { id: "5", nome: "Spritz", prezzo: 9, reparto: "bar", categoria: "Cocktail", img: "\uD83C\uDF79" },
+  { id: "6", nome: "Cacio Pepe", prezzo: 15, reparto: "cucina", categoria: "Primi", img: "\uD83E\uDDC0" },
 ];
 
-const INITIAL_TAVOLI: Tavolo[] = [
-  { id: "1", nome: "T01", stato: "prenotato", persone: 2, cliente: "Caterina Bianchi", tempo: "21:00", posti: 2 },
-  { id: "2", nome: "T02", stato: "cancellato", persone: 0, posti: 4 },
-  { id: "3", nome: "T03", stato: "occupato", persone: 4, cliente: "Mario Rossi", tempo: "45min", posti: 4 },
-  { id: "4", nome: "T04", stato: "libero", persone: 0, posti: 2 },
-  { id: "5", nome: "T05", stato: "libero", persone: 0, posti: 6 },
-  { id: "6", nome: "T06", stato: "occupato", persone: 2, cliente: "Anna Neri", tempo: "18min", posti: 2 },
+const PRENOTAZIONI = [
+  { nome: "Mario Rossi", dettagli: "4 persone • T03 • Oggi 20:30", stato: "Confermata" },
+  { nome: "Caterina Bianchi", dettagli: "2 persone • T01 • Oggi 21:00", stato: "VIP" },
+  { nome: "Luca Verdi", dettagli: "6 persone • T08 • Oggi 19:00", stato: "Cancellata" },
+  { nome: "Anna Neri", dettagli: "2 persone • T12 • Oggi 20:00", stato: "Confermata" },
 ];
 
-const INITIAL_KDS: Comanda[] = [
-  {
-    id: "k1",
-    tavolo: "T03",
-    piatti: [{ nome: "Carbonara", qta: 2, reparto: "cucina", allergeni: ["Uova"], note: "Senza pecorino 1x" }],
-    stato: "nuovo",
-    ora: "21:42",
-    cameriere: "Luca",
-  },
-  {
-    id: "k2",
-    tavolo: "T01",
-    piatti: [{ nome: "Cacio e Pepe", qta: 2, reparto: "cucina" }],
-    stato: "in_prep",
-    ora: "21:40",
-    cameriere: "Sara",
-  },
+const NAV: { id: Tab; label: string; icon: string }[] = [
+  { id: "dashboard", label: "Dashboard", icon: "grid" },
+  { id: "tavoli", label: "Tavoli", icon: "table" },
+  { id: "prenotazioni", label: "Prenotazioni", icon: "cal" },
+  { id: "analisi", label: "Analisi", icon: "chart" },
+  { id: "magazzino", label: "Magazzino", icon: "box" },
+  { id: "haccp", label: "HACCP", icon: "shield" },
+  { id: "kds", label: "KDS", icon: "screen" },
+  { id: "ia", label: "IA", icon: "brain" },
 ];
 
-const PRENOTAZIONI: Prenotazione[] = [
-  { initials: "MR", nome: "Mario Rossi", dettagli: "4 persone • T03 • Oggi 20:30", stato: "Confermata", color: "cyan" },
-  { initials: "CB", nome: "Caterina Bianchi", vip: true, dettagli: "2 persone • T01 • Oggi 21:00", stato: "VIP", color: "gold" },
-  { initials: "LV", nome: "Luca Verdi", dettagli: "6 persone • T02 • Oggi 19:00", stato: "Cancellata", color: "red" },
-  { initials: "AN", nome: "Anna Neri", dettagli: "2 persone • T06 • Oggi 20:00", stato: "Confermata", color: "cyan" },
-];
-
-function playSound(tipo: "nuovo" | "pronto" | "ritardo") {
-  try {
-    const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = tipo === "pronto" ? "sine" : tipo === "ritardo" ? "sawtooth" : "square";
-    osc.frequency.value = tipo === "pronto" ? 880 : tipo === "ritardo" ? 220 : 640;
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.28);
-  } catch {
-    /* audio blocked */
-  }
+function makeTavoli(): Tavolo[] {
+  const stati: StatoTavolo[] = ["libero", "libero", "occupato", "prenotato", "libero"];
+  return Array.from({ length: 20 }, (_, i) => ({
+    id: i + 1,
+    nome: `T${String(i + 1).padStart(2, "0")}`,
+    posti: [2, 2, 4, 4, 6, 8][i % 6],
+    stato: stati[i % 5],
+    x: 10 + (i % 5) * 18 + 5,
+    y: 14 + Math.floor(i / 5) * 22,
+    clienti: [2, 2, 4, 3, 5, 6][i % 6],
+    cameriere: ["Luca", "Sara", "Marco"][i % 3],
+    tempo: (i * 7) % 60,
+    ordini: [],
+    animazione: "none",
+  }));
 }
 
-function statoClass(stato: StatoTavolo) {
-  if (stato === "libero") return "border-green-400/50 bg-green-500/10 shadow-[0_0_20px_rgba(34,197,94,0.3)] text-green-400";
-  if (stato === "occupato" || stato === "servizio") return "border-cyan-400/50 bg-cyan-500/10 shadow-[0_0_20px_rgba(0,217,255,0.3)] text-cyan-400";
-  if (stato === "prenotato") return "border-yellow-400/50 bg-yellow-500/10 shadow-[0_0_20px_rgba(250,204,21,0.3)] text-yellow-400";
-  return "border-red-400/50 bg-red-500/10 text-red-400";
+function playFile(src: string, fallbackHz = 800) {
+  const audio = new Audio(src);
+  audio.volume = 0.45;
+  audio.play().catch(() => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = fallbackHz;
+      gain.gain.value = 0.06;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch {}
+  });
 }
 
-function statoLabel(t: Tavolo) {
-  if (t.stato === "prenotato") return "Riservato";
-  return t.stato;
+function Icon({ name, active }: { name: string; active?: boolean }) {
+  const stroke = active ? "#FF2A2A" : "rgba(255,255,255,0.86)";
+  const common = { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none", stroke, strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  if (name === "grid") return (<svg {...common}><rect x="3" y="3" width="7" height="7" rx="1.4" /><rect x="14" y="3" width="7" height="7" rx="1.4" /><rect x="3" y="14" width="7" height="7" rx="1.4" /><rect x="14" y="14" width="7" height="7" rx="1.4" /></svg>);
+  if (name === "table") return (<svg {...common}><path d="M4 10h16" /><path d="M8 10v8" /><path d="M16 10v8" /><circle cx="8" cy="7" r="2" /><circle cx="16" cy="7" r="2" /><path d="M6 18h4M14 18h4" /></svg>);
+  if (name === "cal") return (<svg {...common}><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /><path d="M9 15l2 2 4-4" /></svg>);
+  if (name === "chart") return (<svg {...common}><path d="M5 19V10" /><path d="M10 19V6" /><path d="M15 19v-7" /><path d="M20 19V4" /></svg>);
+  if (name === "box") return (<svg {...common}><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" /></svg>);
+  if (name === "shield") return (<svg {...common}><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z" /><path d="M9 12l2 2 4-4" /></svg>);
+  if (name === "screen") return (<svg {...common}><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M8 21h8M12 17v4" /></svg>);
+  return (<svg {...common}><path d="M12 3c2 3 2 5 2 6a4 4 0 11-8 0c0-1 0-3 2-6 1 3 3 3 4 0z" /><path d="M8.5 16c.6 2 1.8 3.5 3.5 4.5 1.7-1 2.9-2.5 3.5-4.5" /><circle cx="18" cy="6" r="1" fill={stroke} /><circle cx="20" cy="9" r="0.8" fill={stroke} /></svg>);
 }
 
-export default function MenteLocaleApp() {
-  const [tab, setTab] = useState<Tab>("dashboard");
-  const [tavoli, setTavoli] = useState<Tavolo[]>(INITIAL_TAVOLI);
-  const [kdsCucina, setKdsCucina] = useState<Comanda[]>(INITIAL_KDS);
+export default function App() {
+  const [tab, setTab] = useState<Tab>("tavoli");
+  const [tavoli, setTavoli] = useState<Tavolo[]>(() => makeTavoli());
+  const [selezionato, setSelezionato] = useState<Tavolo | null>(null);
+  const [kdsFiltro, setKdsFiltro] = useState<Reparto>("cucina");
   const [prodotto, setProdotto] = useState("Mozzarella fiordilatte");
   const [lotto, setLotto] = useState("L12345");
   const [dataApertura, setDataApertura] = useState("2026-09-01");
   const [iaOk, setIaOk] = useState(false);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Math.random() > 0.7) playSound("nuovo");
-    }, 15000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const occupati = tavoli.filter((t) => t.stato === "occupato" || t.stato === "prenotato" || t.stato === "servizio").length;
-  const occupazione = Math.round((occupati / tavoli.length) * 100);
+  const occupati = tavoli.filter((t) => t.stato !== "libero").length;
+  const tuttiOrdini = tavoli.flatMap((t) => t.ordini.map((o) => ({ ...o, tavolo: t.nome, tavoloId: t.id })));
+  const kds = tuttiOrdini.filter((o) => o.piatto.reparto === kdsFiltro && o.stato !== "pronto");
+  const ricavi = tavoli.reduce((s, t) => s + t.ordini.reduce((a, o) => a + o.piatto.prezzo * o.qta, 0), 0);
 
   const labelPreview = useMemo(() => {
     const open = new Date(dataApertura);
@@ -143,194 +109,156 @@ export default function MenteLocaleApp() {
     return { open: fmt(open), scad: fmt(scad) };
   }, [dataApertura]);
 
-  const cycleStato = (id: string) => {
-    setTavoli((prev) =>
-      prev.map((x) => {
-        if (x.id !== id) return x;
-        const order: StatoTavolo[] = ["libero", "occupato", "prenotato", "cancellato"];
-        const next = order[(order.indexOf(x.stato) + 1) % order.length];
-        return { ...x, stato: next };
-      })
-    );
+  const animaTavolo = (id: number) => {
+    setTavoli((prev) => prev.map((t) => (t.id === id ? { ...t, animazione: "pulse" } : t)));
+    playFile("/sounds/beep-nuovo.wav", 800);
+    setTimeout(() => setTavoli((prev) => prev.map((t) => (t.id === id ? { ...t, animazione: "none" } : t))), 2000);
+  };
+
+  const aggiungiOrdine = (tavoloId: number, piatto: Piatto) => {
+    const nuovoOrdine: Ordine = { id: `${Date.now()}-${piatto.id}`, piatto, qta: 1, stato: "ordinato", ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) };
+    setTavoli((prev) => prev.map((t) => (t.id === tavoloId ? { ...t, ordini: [...t.ordini, nuovoOrdine], stato: "occupato" } : t)));
+    setSelezionato((prev) => (prev?.id === tavoloId ? { ...prev, ordini: [...prev.ordini, nuovoOrdine], stato: "occupato" } : prev));
+    animaTavolo(tavoloId);
+  };
+
+  const setOrdineStato = (ordineId: string, stato: StatoOrdine) => {
+    setTavoli((prev) => prev.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === ordineId ? { ...o, stato } : o)) })));
+    if (stato === "pronto") playFile("/sounds/ding-pronto.wav", 980);
+  };
+
+  const chiudiTavolo = (id: number) => {
+    setTavoli((prev) => prev.map((t) => (t.id === id ? { ...t, stato: "libero", ordini: [], animazione: "none" } : t)));
+    setSelezionato(null);
   };
 
   return (
-    <div className="min-h-screen bg-[#05070A] text-white relative overflow-hidden font-sans">
-      <div className="absolute inset-0 bg-gradient-to-br from-[#00D9FF]/20 via-[#7B61FF]/20 to-[#05070A] blur-[80px]" />
-      <div className="absolute top-0 left-0 w-[600px] h-[600px] bg-[#00D9FF]/30 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2" />
-      <div className="absolute bottom-0 right-0 w-[800px] h-[800px] bg-[#7B61FF]/30 rounded-full blur-[120px] translate-x-1/2 translate-y-1/2" />
-
-      <header className="relative z-10 p-6 flex justify-between items-center">
+    <div className="min-h-screen bg-[#050507] text-white relative overflow-hidden select-none">
+      <style>{`
+        @keyframes pulse-red { 0%{box-shadow:0 0 0 0 rgba(255,26,26,0.7),0 0 30px rgba(255,26,26,0.3)} 50%{box-shadow:0 0 0 20px rgba(255,26,26,0),0 0 60px rgba(255,26,26,0.6)} 100%{box-shadow:0 0 0 0 rgba(255,26,26,0),0 0 30px rgba(255,26,26,0.3)} }
+        @keyframes glow-cyan { 0%,100%{box-shadow:0 0 20px rgba(0,217,255,0.2),inset 0 1px 1px rgba(255,255,255,0.1)} 50%{box-shadow:0 0 40px rgba(0,217,255,0.4),inset 0 1px 1px rgba(255,255,255,0.15)} }
+        .carbon-bg { background-color:#070707; background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 4px), repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 4px); background-size: 4px 4px, 4px 4px; }
+        .glass { backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,26,26,0.08); }
+        .glass-strong { backdrop-filter: blur(60px); -webkit-backdrop-filter: blur(60px); background: rgba(0,0,0,0.62); border: 0.5px solid rgba(255,26,26,0.12); box-shadow: inset 0 1px 1px rgba(255,255,255,0.08), 0 20px 80px rgba(0,0,0,0.9), 0 0 20px rgba(255,26,26,0.05); }
+        .nav-pill { background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(8,8,8,0.55)); border: 1px solid rgba(255,70,70,0.28); box-shadow: 0 0 0 1px rgba(255,26,26,0.18), 0 0 24px rgba(255,26,26,0.16), inset 0 1px 0 rgba(255,255,255,0.22); }
+      `}</style>
+      <div className="absolute inset-0 carbon-bg opacity-50" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#FF1A1A]/[0.05] via-transparent to-[#00D9FF]/[0.03]" />
+      <header className="relative z-20 p-5 flex justify-between border-b border-[#FF1A1A]/10 glass">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#00D9FF] to-[#7B61FF] flex items-center justify-center shadow-[0_0_20px_#00D9FF]">🧠</div>
+          <div className="w-9 h-9 rounded-full glass flex items-center justify-center">ML</div>
           <div>
-            <h1 className="text-xl font-bold tracking-widest bg-gradient-to-r from-[#00D9FF] to-[#7B61FF] bg-clip-text text-transparent">MENTE LOCALE</h1>
-            <p className="text-[10px] text-white/50 tracking-[0.3em]">RESTAURANT OS • LIVE</p>
+            <p className="font-black text-[13px] tracking-[0.25em]">MENTE LOCALE</p>
+            <p className="text-[9px] text-white/30 tracking-widest">CARBON EDITION • 20 TAVOLI</p>
           </div>
         </div>
-        <div className="w-12 h-12 rounded-full border border-[#00D9FF]/50 bg-black/30 backdrop-blur flex items-center justify-center text-sm font-semibold">ML</div>
+        <div className="text-[10px] text-white/40 self-center">LIVE • {occupati}/20 OCCUPATI</div>
       </header>
-
-      <main className="relative z-10 p-4 space-y-6 max-w-[480px] mx-auto">
-        <AnimatePresence mode="wait">
-          <motion.div key={tab} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.22 }} className="space-y-6">
-            {(tab === "dashboard" || tab === "analisi") && (
-              <motion.div className="rounded-[24px] border border-white/10 bg-white/[0.05] backdrop-blur-[20px] shadow-[inset_0_1px_1px_rgba(255,255,255,0.2),0_0_40px_rgba(0,217,255,0.15)] p-5 grid grid-cols-3 divide-x divide-white/10">
-                <div className="pr-4">
-                  <p className="text-[10px] text-[#00D9FF] uppercase">Occupazione</p>
-                  <p className="text-4xl font-black text-[#00D9FF] drop-shadow-[0_0_10px_#00D9FF]">{occupazione}%</p>
-                  <p className="text-xs text-white/60">{occupati}/{tavoli.length} tavoli</p>
+      <main className="relative z-10 p-4 pb-32 max-w-[920px] mx-auto">
+        {tab === "tavoli" && (
+          <>
+            <div className="relative w-full h-[68vh] min-h-[420px] rounded-[32px] glass-strong overflow-hidden">
+              {tavoli.map((t) => (
+                <button key={t.id} onClick={() => setSelezionato(t)} style={{ left: `${t.x}%`, top: `${t.y}%` }} className={`absolute -translate-x-1/2 -translate-y-1/2 w-[72px] h-[72px] rounded-full flex flex-col items-center justify-center transition-all duration-500 glass ${t.stato === "libero" ? "border-emerald-400/15" : t.stato === "occupato" ? "border-[#00D9FF]/30" : t.stato === "prenotato" ? "border-amber-400/30" : "border-[#FF1A1A]/30"} ${t.animazione === "pulse" ? "animate-[pulse-red_1s_ease-out_2]" : t.stato === "occupato" ? "animate-[glow-cyan_3s_ease-in-out_infinite]" : ""}`}>
+                  <span className="text-[11px] font-black">{t.nome}</span>
+                  <span className="text-[7px] text-white/40">{t.posti}P • {t.clienti}CLI</span>
+                  {t.ordini.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-[#FF1A1A] text-black text-[10px] font-black rounded-full flex items-center justify-center">{t.ordini.length}</span>}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[9px] text-white/30">
+              <div>LIBERO</div><div>OCCUPATO</div><div>PRENOTATO</div><div>PULSE ORDINE</div>
+            </div>
+          </>
+        )}
+        {tab === "dashboard" && (
+          <div className="rounded-[28px] glass-strong p-5 grid grid-cols-3 gap-3">
+            <div><p className="text-[10px] text-white/40">OCCUPAZIONE</p><p className="text-4xl font-black text-[#00D9FF]">{Math.round((occupati / 20) * 100)}%</p></div>
+            <div><p className="text-[10px] text-white/40">RICAVI LIVE</p><p className="text-4xl font-black text-[#FF6B6B]">EUR {ricavi}</p></div>
+            <div><p className="text-[10px] text-white/40">KDS APERTI</p><p className="text-4xl font-black">{tuttiOrdini.filter((o) => o.stato !== "pronto").length}</p></div>
+          </div>
+        )}
+        {tab === "prenotazioni" && (
+          <div className="space-y-3">{PRENOTAZIONI.map((p) => (<div key={p.nome} className="rounded-2xl glass p-4 flex justify-between"><div><p className="font-bold">{p.nome}</p><p className="text-xs text-white/40">{p.dettagli}</p></div><span className="text-[10px]">{p.stato}</span></div>))}</div>
+        )}
+        {tab === "analisi" && (<div className="rounded-[28px] glass-strong p-5"><h2 className="font-black">ANALISI SERATA</h2><p className="text-sm text-white/60 mt-2">Coperti 42 • ticket medio 29,50 • top Carbonara</p></div>)}
+        {tab === "magazzino" && (<div className="space-y-2">{[["Mozzarella","2.4 kg","sotto scorta"],["Guanciale","1.8 kg","ok"]].map(([n,q,s]) => (<div key={n} className="glass rounded-2xl p-4 flex justify-between"><span>{n} • {q}</span><span className="text-[10px]">{s}</span></div>))}</div>)}
+        {tab === "haccp" && (
+          <div className="rounded-[28px] glass-strong p-5">
+            <h2 className="font-black mb-3">HACCP PRO</h2>
+            <input value={prodotto} onChange={(e) => setProdotto(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 w-full mb-2 text-xs" />
+            <input value={lotto} onChange={(e) => setLotto(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 w-full mb-2 text-xs" />
+            <input type="date" value={dataApertura} onChange={(e) => setDataApertura(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 w-full text-xs" />
+            <div className="mt-3 p-3 bg-white text-black rounded-xl text-[10px] font-mono"><p className="uppercase font-bold">{prodotto}</p><p>Aperto: {labelPreview.open} - Scad: {labelPreview.scad}</p><p>Lotto: {lotto}</p></div>
+          </div>
+        )}
+        {tab === "kds" && (
+          <div className="space-y-3">
+            <div className="flex gap-2">{(["cucina","bar"] as Reparto[]).map((r) => (<button key={r} onClick={() => setKdsFiltro(r)} className={`text-[10px] px-3 py-1 rounded-full ${kdsFiltro === r ? "bg-[#FF1A1A] text-black font-black" : "glass text-white/50"}`}>{r.toUpperCase()}</button>))}</div>
+            {kds.length === 0 && <p className="text-white/30 text-sm glass rounded-2xl p-6 text-center">Nessuna comanda in {kdsFiltro}.</p>}
+            {kds.map((o) => (
+              <div key={o.id} className="rounded-2xl glass p-4">
+                <p className="font-black">{o.tavolo} · {o.piatto.nome} x{o.qta}</p>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => setOrdineStato(o.id, "in_prep")} className="text-[10px] px-3 py-1 rounded-full bg-[#00D9FF] text-black font-black">IN PREP</button>
+                  <button onClick={() => setOrdineStato(o.id, "pronto")} className="text-[10px] px-3 py-1 rounded-full bg-emerald-400 text-black font-black">PRONTO</button>
                 </div>
-                <div className="px-4">
-                  <p className="text-[10px] text-[#7B61FF] uppercase">Ricavi Oggi</p>
-                  <p className="text-3xl font-black text-[#9B7FFF] drop-shadow-[0_0_10px_#7B61FF]">EUR 1240</p>
-                  <p className="text-xs text-green-400">+12% vs ieri</p>
-                </div>
-                <div className="pl-4">
-                  <p className="text-[10px] text-white/60 uppercase">Tempo medio</p>
-                  <p className="text-4xl font-black">45min</p>
-                  <p className="text-xs text-white/60">media servizio</p>
-                </div>
-              </motion.div>
-            )}
-
-            {(tab === "dashboard" || tab === "prenotazioni") && (
+              </div>
+            ))}
+          </div>
+        )}
+        {tab === "ia" && (
+          <div className="rounded-[28px] glass-strong p-5">
+            <h2 className="font-black">MENTE LOCALE IA</h2>
+            <p className="text-sm text-white/70 mt-3">{iaOk ? "Ordine inviato a Rossi." : "Per sabato servono 4kg di mozzarella in piu. Ordino da Rossi?"}</p>
+            {!iaOk && <button onClick={() => setIaOk(true)} className="text-xs bg-white text-black px-4 py-2 rounded-full font-black mt-4">Si, ordina</button>}
+          </div>
+        )}
+      </main>
+      {selezionato && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-xl p-3">
+          <div className="w-full max-w-[560px] rounded-[28px] glass-strong max-h-[88vh] flex flex-col overflow-hidden">
+            <div className="p-5 flex justify-between border-b border-white/5">
               <div>
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="font-bold text-lg">Prenotazioni</h2>
-                  <button onClick={() => setTab("prenotazioni")} className="text-xs px-3 py-1 rounded-full border border-[#00D9FF] text-[#00D9FF] bg-[#00D9FF]/10">Vedi tutte</button>
-                </div>
-                <div className="space-y-3">
-                  {(tab === "prenotazioni" ? PRENOTAZIONI : PRENOTAZIONI.slice(0, 3)).map((p) => (
-                    <div key={p.nome} className="rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur p-4 flex justify-between items-center">
-                      <div className="flex gap-3 items-center">
-                        <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${p.color === "cyan" ? "from-cyan-500 to-blue-500" : p.color === "gold" ? "from-yellow-500 to-orange-500" : "from-gray-600 to-gray-800"} flex items-center justify-center font-bold`}>{p.initials}</div>
-                        <div>
-                          <p className="font-bold flex gap-2 items-center">{p.nome}{p.vip && <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full">VIP</span>}</p>
-                          <p className="text-xs text-white/60">{p.dettagli}</p>
-                        </div>
-                      </div>
-                      <span className={`text-xs px-3 py-1 rounded-full border ${p.stato === "Confermata" ? "border-cyan-400 text-cyan-400 bg-cyan-400/10" : p.stato === "VIP" ? "border-yellow-400 text-yellow-400 bg-yellow-400/10" : "border-red-400 text-red-400 bg-red-400/10"}`}>{p.stato}</span>
-                    </div>
-                  ))}
-                </div>
+                <h2 className="text-xl font-black">{selezionato.nome} • {selezionato.clienti} persone • {selezionato.cameriere}</h2>
+                <p className="text-xs text-white/40">Totale EUR {selezionato.ordini.reduce((s, o) => s + o.piatto.prezzo * o.qta, 0)} • {selezionato.ordini.length} piatti</p>
               </div>
-            )}
-
-            {(tab === "dashboard" || tab === "tavoli") && (
-              <div>
-                <h2 className="font-bold text-lg mb-3 flex justify-between">Gestione Tavoli <span className="text-white/40 text-sm">tocca per ciclare</span></h2>
-                <div className="grid grid-cols-2 gap-3">
-                  {tavoli.map((t) => (
-                    <motion.div key={t.id} whileTap={{ scale: 0.97 }} onClick={() => cycleStato(t.id)} className={`rounded-[20px] p-4 border backdrop-blur cursor-pointer transition-all ${statoClass(t.stato)}`}>
-                      <p className="text-xs">• {t.nome}</p>
-                      <p className="font-bold mt-1 capitalize text-white">{statoLabel(t)}</p>
-                      <p className="text-xs text-white/60 mt-1">{t.tempo ? `${t.tempo} • ${t.cliente}` : t.stato === "libero" ? "Pronto" : "--"}</p>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(tab === "dashboard" || tab === "tavoli") && (
-              <div className="rounded-[24px] bg-black/40 border border-white/10 p-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-bold">KDS CUCINA LIVE</h3>
-                  <button onClick={() => playSound("nuovo")} className="text-xs bg-white/10 px-3 py-1 rounded-full">Test Suono</button>
-                </div>
-                <div className="space-y-2">
-                  {kdsCucina.length === 0 && <p className="text-sm text-white/50 py-4 text-center">Cucina libera. Nessuna comanda aperta.</p>}
-                  {kdsCucina.map((k) => (
-                    <div key={k.id} className={`p-3 rounded-xl border-l-4 ${k.stato === "nuovo" ? "border-red-500 bg-red-500/10 animate-pulse" : "border-yellow-500 bg-yellow-500/10"}`}>
-                      <div className="flex justify-between">
-                        <p className="font-bold">{k.tavolo} - {k.piatti.map((p) => p.nome).join(", ")} x{k.piatti[0].qta}</p>
-                        <p className="text-xs text-white/60">{k.ora} • {k.cameriere}</p>
-                      </div>
-                      {k.piatti[0].note && <p className="text-xs text-yellow-300 mt-1">{k.piatti[0].note}</p>}
-                      <div className="flex gap-2 mt-2">
-                        <button className="text-[10px] bg-[#00D9FF] text-black px-3 py-1 rounded-full font-bold" onClick={() => setKdsCucina((prev) => prev.map((x) => (x.id === k.id ? { ...x, stato: "in_prep" } : x)))}>IN PREP</button>
-                        <button className="text-[10px] bg-green-500 text-black px-3 py-1 rounded-full font-bold" onClick={() => { setKdsCucina((prev) => prev.filter((x) => x.id !== k.id)); playSound("pronto"); }}>PRONTO Sala</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(tab === "dashboard" || tab === "haccp") && (
-              <div className="rounded-[24px] bg-white/[0.05] border border-white/10 p-4">
-                <h3 className="font-bold mb-3">HACCP PRO - Etichettatura</h3>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <input value={prodotto} onChange={(e) => setProdotto(e.target.value)} placeholder="Prodotto" className="bg-black/30 border border-white/10 rounded-xl p-3" />
-                  <input value={lotto} onChange={(e) => setLotto(e.target.value)} placeholder="Lotto" className="bg-black/30 border border-white/10 rounded-xl p-3" />
-                  <input type="date" value={dataApertura} onChange={(e) => setDataApertura(e.target.value)} className="bg-black/30 border border-white/10 rounded-xl p-3 col-span-2" />
-                </div>
-                <button className="w-full mt-3 bg-gradient-to-r from-[#00D9FF] to-[#7B61FF] rounded-xl py-3 font-bold text-black">Genera Etichetta 70x40 ZPL</button>
-                <div className="mt-3 p-3 bg-white text-black rounded-xl text-[10px] font-mono">
-                  <p className="uppercase font-bold">{prodotto || "PRODOTTO"}</p>
-                  <p>Aperto: {labelPreview.open} - Scad: {labelPreview.scad}</p>
-                  <p>Lotto: {lotto || "-"} - Op: Marco</p>
-                  <p>QR: [######]</p>
-                </div>
-              </div>
-            )}
-
-            {tab === "magazzino" && (
-              <div className="rounded-[24px] bg-white/[0.05] border border-white/10 p-4 space-y-3">
-                <h3 className="font-bold">Magazzino</h3>
-                {[{ nome: "Mozzarella fiordilatte", qta: "2.4 kg", soglia: "sotto scorta" }, { nome: "Guanciale", qta: "1.8 kg", soglia: "ok" }, { nome: "Pecorino romano", qta: "0.6 kg", soglia: "attenzione" }, { nome: "Pasta spaghetti", qta: "8 kg", soglia: "ok" }].map((item) => (
-                  <div key={item.nome} className="flex justify-between items-center rounded-2xl bg-black/30 p-3 border border-white/10">
-                    <div>
-                      <p className="font-semibold">{item.nome}</p>
-                      <p className="text-xs text-white/50">{item.qta}</p>
-                    </div>
-                    <span className={`text-[10px] px-2 py-1 rounded-full border ${item.soglia === "ok" ? "border-green-400 text-green-400" : item.soglia === "attenzione" ? "border-yellow-400 text-yellow-400" : "border-red-400 text-red-400"}`}>{item.soglia}</span>
-                  </div>
+              <button onClick={() => setSelezionato(null)} className="w-9 h-9 rounded-full glass">X</button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {selezionato.ordini.map((o) => (<div key={o.id} className="flex justify-between p-3 rounded-2xl glass"><span>{o.qta}x {o.piatto.nome} - {o.piatto.reparto.toUpperCase()}</span><span className="text-xs text-white/50">{o.stato}</span></div>))}
+              {selezionato.ordini.length === 0 && <p className="text-sm text-white/20">Nessun ordine. Tocca il menu.</p>}
+              <div className="grid grid-cols-2 gap-2">
+                {MENU.map((p) => (
+                  <button key={p.id} onClick={() => aggiungiOrdine(selezionato.id, p)} className="text-left p-3 rounded-2xl glass">
+                    <p className="text-sm font-bold">{p.nome}</p>
+                    <p className="text-[9px] text-white/40">{p.categoria} • {p.reparto.toUpperCase()} • EUR {p.prezzo}</p>
+                  </button>
                 ))}
               </div>
-            )}
-
-            {tab === "analisi" && (
-              <div className="rounded-[24px] bg-white/[0.05] border border-white/10 p-4 space-y-3">
-                <h3 className="font-bold">Analisi serata</h3>
-                <p className="text-sm text-white/70">Coperti stimati: 42. Ticket medio 29,50. Piatto top: Carbonara.</p>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="rounded-2xl bg-black/30 p-3 border border-white/10">
-                    <p className="text-white/50 text-xs">Cucina</p>
-                    <p className="font-bold text-[#00D9FF]">12 min / piatto</p>
-                  </div>
-                  <div className="rounded-2xl bg-black/30 p-3 border border-white/10">
-                    <p className="text-white/50 text-xs">No-show</p>
-                    <p className="font-bold text-yellow-300">1 prenotazione</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="rounded-[24px] bg-gradient-to-br from-[#7B61FF]/20 to-[#00D9FF]/20 border border-[#7B61FF]/30 p-4">
-              <h3 className="font-bold">Mente Locale IA</h3>
-              <p className="text-xs text-white/70 mt-2">{iaOk ? "Ordine inviato a Rossi. 4kg di mozzarella in arrivo venerdi mattina." : "Sergio, per sabato hai 18 prenotati, ti servono 4kg di mozzarella in piu. Vuoi che ordini da Rossi?"}</p>
-              {!iaOk && (
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => setIaOk(true)} className="text-xs bg-white text-black px-4 py-2 rounded-full font-bold">Si, ordina</button>
-                  <button className="text-xs border border-white/20 px-4 py-2 rounded-full">Dimmi di piu</button>
-                </div>
-              )}
             </div>
-          </motion.div>
-        </AnimatePresence>
-      </main>
-
-      <nav className="fixed bottom-4 left-4 right-4 max-w-[480px] mx-auto bg-black/60 backdrop-blur-[20px] border border-white/10 rounded-[24px] p-2 flex justify-around z-20">
-        {NAV.map((n) => (
-          <button key={n.label} onClick={() => setTab(n.id)} className={`flex flex-col items-center p-2 rounded-2xl ${tab === n.id ? "text-[#00D9FF] bg-[#00D9FF]/10" : "text-white/50"}`}>
-            <span>{n.icon}</span>
-            <span className="text-[9px] mt-1">{n.label}</span>
-          </button>
-        ))}
+            <div className="p-3 grid grid-cols-3 gap-2 border-t border-white/5">
+              <button className="py-3 rounded-full glass text-xs">SPOSTA</button>
+              <button className="py-3 rounded-full bg-[#00D9FF]/20 border border-[#00D9FF]/30 text-xs font-bold">CONTO DIVISO</button>
+              <button onClick={() => chiudiTavolo(selezionato.id)} className="py-3 rounded-full bg-[#FF1A1A] text-black text-xs font-black">CHIUDI EUR {selezionato.ordini.reduce((s, o) => s + o.piatto.prezzo * o.qta, 0)}</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <nav className="fixed bottom-4 left-3 right-3 max-w-[760px] mx-auto z-40">
+        <div className="rounded-full nav-pill px-3 sm:px-5 py-3 flex justify-between items-end">
+          {NAV.map((n) => {
+            const active = tab === n.id;
+            return (
+              <button key={n.id} onClick={() => setTab(n.id)} className="flex flex-col items-center min-w-[36px]">
+                <Icon name={n.icon} active={active} />
+                <span className={`text-[8px] mt-1 tracking-widest ${active ? "text-[#FF2A2A]" : "text-white/45"}`}>{n.label}</span>
+                {active && <div className="w-1 h-1 bg-[#FF1A1A] rounded-full mt-1" />}
+              </button>
+            );
+          })}
+        </div>
       </nav>
-
-      <div className="h-24" />
     </div>
   );
 }
