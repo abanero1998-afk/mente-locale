@@ -27,6 +27,7 @@ function makeTavoli(): Tavolo[] {
   return Array.from({ length: 20 }, (_, i) => ({
     id: i + 1,
     nome: `T${String(i + 1).padStart(2, "0")}`,
+    salaId: i < 12 ? "sala-int" : "sala-est",
     posti: [2, 2, 4, 4, 6, 8][i % 6],
     stato: stati[i % 5],
     x: 10 + (i % 5) * 18 + 5,
@@ -110,7 +111,7 @@ type Store = {
   aggiungiProdotto: (form: { nome: string; prezzo: string; categoria: string; reparto: Piatto["reparto"]; img: string }) => Promise<Piatto>;
   eliminaProdotto: (id: string) => Promise<void>;
   confermaPrenotazione: (id: string) => void;
-  creaLotto: (form: { prodotto: string; lotto: string; scadenza: string; operatore?: string }) => void;
+  creaLotto: (form: { prodotto: string; lotto: string; scadenza: string; operatore?: string; note?: string; produzione?: string }) => void;
   updateLotto: (id: string, patch: Partial<Lotto>) => void;
   deleteLotto: (id: string) => void;
   addMag: (form: { nome: string; qta: string; unita: string; soglia: string }) => void;
@@ -160,9 +161,7 @@ export const useMenteStore = create<Store>()(
       logTemp: [],
       pulizie: PULIZIA_SEED,
       printer: PRINTER_SEED,
-      prenotazioni: [
-        { id: "p1", initials: "MR", nome: "Mario Rossi", persone: 4, tavolo: "T03", quando: "Oggi 20:30", stato: "confermata", fonte: "telefono" },
-      ],
+      prenotazioni: [{ id: "p1", initials: "MR", nome: "Mario Rossi", persone: 4, tavolo: "T03", quando: "Oggi 20:30", stato: "confermata", fonte: "telefono" }],
       scontrini: [
         { id: "s1", tavoloId: 4, totale: 86, minuti: 42, ts: Date.now() - 3600000 },
         { id: "s2", tavoloId: 7, totale: 124, minuti: 51, ts: Date.now() - 1800000 },
@@ -174,39 +173,25 @@ export const useMenteStore = create<Store>()(
       setOnline: (v) => set({ online: v }),
       pulse: (id) => {
         set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === id ? { ...t, animazione: "pulse" } : t)) }));
-        setTimeout(() => {
-          set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === id ? { ...t, animazione: "none" } : t)) }));
-        }, 2000);
+        setTimeout(() => set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === id ? { ...t, animazione: "none" } : t)) })), 2000);
       },
       applicaEvento: (e) => {
         if (e.kind === "nuovo_ordine") {
           set((s) => ({
             tavoli: s.tavoli.map((t) =>
-              t.id === e.tavoloId
-                ? { ...t, stato: "occupato", animazione: "pulse", ordini: t.ordini.some((o) => o.id === e.ordine.id) ? t.ordini : [...t.ordini, e.ordine] }
-                : t
+              t.id === e.tavoloId ? { ...t, stato: "occupato", animazione: "pulse", ordini: t.ordini.some((o) => o.id === e.ordine.id) ? t.ordini : [...t.ordini, e.ordine] } : t
             ),
           }));
           get().pulse(e.tavoloId);
         }
-        if (e.kind === "stato_ordine") {
-          set((s) => ({ tavoli: s.tavoli.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === e.ordineId ? { ...o, stato: e.stato } : o)) })) }));
-        }
-        if (e.kind === "chiudi_tavolo") {
-          set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === e.tavoloId ? { ...t, stato: "libero", ordini: [], animazione: "none" } : t)) }));
-        }
+        if (e.kind === "stato_ordine") set((s) => ({ tavoli: s.tavoli.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === e.ordineId ? { ...o, stato: e.stato } : o)) })) }));
+        if (e.kind === "chiudi_tavolo") set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === e.tavoloId ? { ...t, stato: "libero", ordini: [], animazione: "none" } : t)) }));
         if (e.kind === "prodotto_add") set((s) => ({ menu: s.menu.some((p) => p.id === e.piatto.id) ? s.menu : [...s.menu, e.piatto] }));
         if (e.kind === "prodotto_del") set((s) => ({ menu: s.menu.filter((p) => p.id !== e.prodottoId) }));
         if (e.kind === "avviso_socio") get().pushAvviso(e.msg, e.urgente);
       },
       aggiungiOrdine: async (tavoloId, piatto, qta = 1) => {
-        const ordine: Ordine = {
-          id: `${Date.now()}-${piatto.id}-${Math.random().toString(36).slice(2, 6)}`,
-          piatto,
-          qta,
-          stato: "ordinato",
-          ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }),
-        };
+        const ordine: Ordine = { id: `${Date.now()}-${piatto.id}-${Math.random().toString(36).slice(2, 6)}`, piatto, qta, stato: "ordinato", ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) };
         set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === tavoloId ? { ...t, ordini: [...t.ordini, ordine], stato: "occupato", animazione: "pulse" } : t)) }));
         get().pulse(tavoloId);
         const ev: SyncEvent = { kind: "nuovo_ordine", tavoloId, ordine, deviceId };
@@ -229,14 +214,7 @@ export const useMenteStore = create<Store>()(
         await pushEvent(ev, { id: `cl-${id}-${Date.now()}`, tipo: "chiudi", tavoloId: id, ts: Date.now() }, set);
       },
       aggiungiProdotto: async (form) => {
-        const piatto: Piatto = {
-          id: `p-${Date.now()}`,
-          nome: form.nome.trim() || "Nuovo piatto",
-          prezzo: Number(form.prezzo) || 0,
-          categoria: form.categoria || "Primi",
-          reparto: form.reparto || "cucina",
-          img: form.img || "🍝",
-        };
+        const piatto: Piatto = { id: `p-${Date.now()}`, nome: form.nome.trim() || "Nuovo piatto", prezzo: Number(form.prezzo) || 0, categoria: form.categoria || "Primi", reparto: form.reparto || "cucina", img: form.img || "🍝" };
         set((s) => ({ menu: [...s.menu, piatto] }));
         const ev: SyncEvent = { kind: "prodotto_add", piatto, deviceId };
         await pushEvent(ev, { id: piatto.id, tipo: "prodotto_add", tavoloId: 0, piatto, ts: Date.now() }, set);
@@ -255,25 +233,21 @@ export const useMenteStore = create<Store>()(
             id: `lt-${Date.now()}`,
             prodotto: form.prodotto.trim() || "Prodotto",
             lotto: form.lotto.trim() || `L${Date.now().toString().slice(-5)}`,
-            apertura: oggi,
+            apertura: form.produzione || oggi,
             scadenza: form.scadenza || oggi,
             giorni_rimasti: giorniRimasti(form.scadenza || oggi),
             operatore: form.operatore || "Sala",
+            note: form.note || "",
+            produzione: form.produzione || oggi,
           }, ...s.lotti],
         }));
       },
-      updateLotto: (id, patch) => set((s) => ({
-        lotti: s.lotti.map((l) => (l.id === id ? { ...l, ...patch, giorni_rimasti: giorniRimasti(patch.scadenza || l.scadenza) } : l)),
-      })),
+      updateLotto: (id, patch) => set((s) => ({ lotti: s.lotti.map((l) => (l.id === id ? { ...l, ...patch, giorni_rimasti: giorniRimasti(patch.scadenza || l.scadenza) } : l)) })),
       deleteLotto: (id) => set((s) => ({ lotti: s.lotti.filter((l) => l.id !== id) })),
-      addMag: (form) => set((s) => ({
-        magazzino: [...s.magazzino, { id: `m-${Date.now()}`, nome: form.nome || "Articolo", qta: Number(form.qta) || 0, unita: form.unita || "kg", soglia: Number(form.soglia) || 1 }],
-      })),
+      addMag: (form) => set((s) => ({ magazzino: [...s.magazzino, { id: `m-${Date.now()}`, nome: form.nome || "Articolo", qta: Number(form.qta) || 0, unita: form.unita || "kg", soglia: Number(form.soglia) || 1 }] })),
       updateMag: (id, patch) => set((s) => ({ magazzino: s.magazzino.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
       deleteMag: (id) => set((s) => ({ magazzino: s.magazzino.filter((m) => m.id !== id) })),
-      addFrigo: (form) => set((s) => ({
-        frighi: [...s.frighi, { id: `f-${Date.now()}`, nome: form.nome || "Frigo", temp: Number(form.temp) || 0, min: Number(form.min) || 0, max: Number(form.max) || 4, lastCheck: 0 }],
-      })),
+      addFrigo: (form) => set((s) => ({ frighi: [...s.frighi, { id: `f-${Date.now()}`, nome: form.nome || "Frigo", temp: Number(form.temp) || 0, min: Number(form.min) || 0, max: Number(form.max) || 4, lastCheck: 0 }] })),
       updateFrigo: (id, patch) => set((s) => ({ frighi: s.frighi.map((f) => (f.id === id ? { ...f, ...patch } : f)) })),
       deleteFrigo: (id) => set((s) => ({ frighi: s.frighi.filter((f) => f.id !== id) })),
       salvaTemp: (frigoId, temp) => {
@@ -289,9 +263,7 @@ export const useMenteStore = create<Store>()(
         if (!f) return;
         get().salvaTemp(frigoId, f.temp);
       },
-      addPulizia: (form) => set((s) => ({
-        pulizie: [{ id: `c-${Date.now()}`, zona: form.zona || "Zona", operatore: form.operatore || "Sala", fatto: false, ts: Date.now(), note: form.note || "" }, ...s.pulizie],
-      })),
+      addPulizia: (form) => set((s) => ({ pulizie: [{ id: `c-${Date.now()}`, zona: form.zona || "Zona", operatore: form.operatore || "Sala", fatto: false, ts: Date.now(), note: form.note || "" }, ...s.pulizie] })),
       togglePulizia: (id) => set((s) => ({ pulizie: s.pulizie.map((p) => (p.id === id ? { ...p, fatto: !p.fatto, ts: Date.now() } : p)) })),
       deletePulizia: (id) => set((s) => ({ pulizie: s.pulizie.filter((p) => p.id !== id) })),
       setPrinter: (patch) => set((s) => ({ printer: { ...s.printer, ...patch } })),
@@ -321,7 +293,7 @@ export const useMenteStore = create<Store>()(
         set({ codaOffline: left });
       },
     }),
-    { name: "mente-locale-v5" }
+    { name: "mente-locale-v6" }
   )
 );
 
