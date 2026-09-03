@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMenteStore, wireSync } from "@/lib/store";
-import type { Piatto, Reparto, StatoOrdine, Tavolo } from "@/lib/types";
-import { MenuTab, ProdottoRow } from "./menu-tab";
+import type { Piatto, Reparto, Tavolo } from "@/lib/types";
+import { MenuTab } from "./menu-tab";
 
 type Tab =
   | "dashboard"
@@ -23,7 +23,7 @@ const NAV: { id: Tab; label: string; icon: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: "grid" },
   { id: "tavoli", label: "Tavoli", icon: "table" },
   { id: "prenotazioni", label: "Prenotazioni", icon: "cal" },
-  { id: "menu", label: "Menu", icon: "chart" },
+  { id: "menu", label: "Menu", icon: "menu" },
   { id: "magazzino", label: "Magazzino", icon: "box" },
   { id: "haccp", label: "HACCP", icon: "shield" },
   { id: "kds", label: "KDS", icon: "screen" },
@@ -68,7 +68,7 @@ function Icon({ name, active }: { name: string; active?: boolean }) {
   if (name === "grid") return (<svg {...common}><rect x="3" y="3" width="7" height="7" rx="1.4" /><rect x="14" y="3" width="7" height="7" rx="1.4" /><rect x="3" y="14" width="7" height="7" rx="1.4" /><rect x="14" y="14" width="7" height="7" rx="1.4" /></svg>);
   if (name === "table") return (<svg {...common}><path d="M4 10h16" /><path d="M8 10v8" /><path d="M16 10v8" /><circle cx="8" cy="7" r="2" /><circle cx="16" cy="7" r="2" /><path d="M6 18h4M14 18h4" /></svg>);
   if (name === "cal") return (<svg {...common}><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /><path d="M9 15l2 2 4-4" /></svg>);
-  if (name === "chart") return (<svg {...common}><path d="M4 6h16M4 12h16M4 18h10" /></svg>);
+  if (name === "menu") return (<svg {...common}><path d="M4 7h16M4 12h16M4 17h10" /><circle cx="19" cy="17" r="2" /></svg>);
   if (name === "box") return (<svg {...common}><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" /><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5" /></svg>);
   if (name === "shield") return (<svg {...common}><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z" /><path d="M9 12l2 2 4-4" /></svg>);
   if (name === "screen") return (<svg {...common}><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M8 21h8M12 17v4" /></svg>);
@@ -111,7 +111,23 @@ export default function App() {
   useEffect(() => {
     if (swOnce.current) return;
     swOnce.current = true;
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((reg) => {
+        void reg.update();
+      }).catch(() => {});
+      navigator.serviceWorker.addEventListener("message", (e) => {
+        if (e.data?.type === "RELOAD" && !sessionStorage.getItem("ml-reloaded")) {
+          sessionStorage.setItem("ml-reloaded", "1");
+          location.reload();
+        }
+      });
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!sessionStorage.getItem("ml-sw-ctrl")) {
+          sessionStorage.setItem("ml-sw-ctrl", "1");
+          location.reload();
+        }
+      });
+    }
     const onPrompt = (e: Event) => { e.preventDefault(); setInstallEvt(e); };
     window.addEventListener("beforeinstallprompt", onPrompt);
     if ("Notification" in window) setNotifOn(Notification.permission === "granted");
