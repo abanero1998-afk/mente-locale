@@ -3,6 +3,20 @@ export type StatoTavolo = "libero" | "occupato" | "prenotato" | "conto";
 export type StatoOrdine = "ordinato" | "in_prep" | "pronto";
 export type StatoPrenotazione = "da_confermare" | "confermata" | "vip" | "cancellata";
 export type PrinterMode = "zpl" | "bt" | "https";
+export type Postazione = "cameriere" | "cucina" | "bar";
+export type TipoSala = "interna" | "esterna";
+export type HaccpView =
+  | "hub"
+  | "fornitori"
+  | "pulizia"
+  | "scadenze"
+  | "frighi"
+  | "olio"
+  | "tracciabilita"
+  | "etichetta"
+  | "abbattimento"
+  | "stampante"
+  | "asl";
 
 export type Piatto = {
   id: string;
@@ -28,9 +42,16 @@ export type RigaComanda = {
   qta: number;
 };
 
+export type Sala = {
+  id: string;
+  nome: string;
+  tipo: TipoSala;
+};
+
 export type Tavolo = {
   id: number;
   nome: string;
+  salaId: string;
   posti: number;
   stato: StatoTavolo;
   x: number;
@@ -76,6 +97,8 @@ export type Lotto = {
   scadenza: string;
   giorni_rimasti: number;
   operatore: string;
+  note?: string;
+  produzione?: string;
 };
 
 export type Pulizia = {
@@ -85,6 +108,33 @@ export type Pulizia = {
   fatto: boolean;
   ts: number;
   note: string;
+};
+
+export type Fornitore = {
+  id: string;
+  nome: string;
+  categoria: string;
+  telefono: string;
+  note: string;
+};
+
+export type ControlloOlio = {
+  id: string;
+  vasca: string;
+  polarita: number;
+  filtro: string;
+  ts: number;
+  ok: boolean;
+};
+
+export type Abbattimento = {
+  id: string;
+  prodotto: string;
+  tInizio: number;
+  tFine: number;
+  inizio: string;
+  fine: string;
+  operatore: string;
 };
 
 export type PrinterConfig = {
