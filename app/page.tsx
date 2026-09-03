@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMenteStore, wireSync } from "@/lib/store";
 import type { Piatto, Reparto, RigaComanda, Tavolo } from "@/lib/types";
 import { MenuTab } from "./menu-tab";
+import { HaccpTab } from "./haccp-tab";
 
 type Tab = "dashboard" | "tavoli" | "menu" | "haccp" | "ia";
 
@@ -94,9 +95,7 @@ export default function App() {
   const menu = useMenteStore((s) => s.menu);
   const magazzino = useMenteStore((s) => s.magazzino);
   const frighi = useMenteStore((s) => s.frighi);
-  const lotti = useMenteStore((s) => s.lotti || []);
   const scontrini = useMenteStore((s) => s.scontrini);
-  const logTemp = useMenteStore((s) => s.logTemp || []);
   const online = useMenteStore((s) => s.online);
   const codaOffline = useMenteStore((s) => s.codaOffline);
   const [selezionato, setSelezionato] = useState<Tavolo | null>(null);
@@ -106,9 +105,6 @@ export default function App() {
   const [iaOk, setIaOk] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ nome: "", prezzo: "", categoria: "Primi", reparto: "cucina" as Reparto, img: "🍝" });
-  const [lottoForm, setLottoForm] = useState({ prodotto: "Mozzarella", lotto: "L12345", scadenza: "2026-09-06" });
-  const [tempDraft, setTempDraft] = useState<Record<string, string>>({});
-  const [printMsg, setPrintMsg] = useState("");
   const swOnce = useRef(false);
   const occupati = tavoli.filter((t) => t.stato !== "libero").length;
   const tuttiOrdini = tavoli.flatMap((t) => t.ordini.map((o) => ({ ...o, tavolo: t.nome, tavoloId: t.id })));
@@ -127,12 +123,6 @@ export default function App() {
     swOnce.current = true;
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((reg) => { void reg.update(); }).catch(() => {});
-      navigator.serviceWorker.addEventListener("message", (e) => {
-        if (e.data?.type === "RELOAD" && !sessionStorage.getItem("ml-reloaded")) {
-          sessionStorage.setItem("ml-reloaded", "1");
-          location.reload();
-        }
-      });
     }
     wireSync();
   }, []);
@@ -163,42 +153,6 @@ export default function App() {
       void notifyKds(r.piatto, selezionato.nome);
     }
     setComanda([]);
-  };
-
-  const stampaLotto = async () => {
-    const zpl = `^XA^FO50,50^A0N,30,30^FD${lottoForm.prodotto.toUpperCase()}^FS^FO50,100^A0N,20,20^FDSCAD:${lottoForm.scadenza}^FS^FO50,130^BQN,2,4^FDQA,LOTTO${lottoForm.lotto}^FS^XZ`;
-    useMenteStore.getState().creaLotto(lottoForm);
-    try {
-      const res = await fetch("/api/print", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ zpl, printer_ip: typeof window !== "undefined" ? localStorage.getItem("printer_ip") : null }),
-      });
-      const data = await res.json();
-      setPrintMsg(data.printed ? "Stampata 70x40" : "ZPL generato • collega stampante");
-    } catch {
-      setPrintMsg("ZPL generato offline");
-    }
-  };
-
-  const exportAsl = () => {
-    const rows = [
-      "Prodotto,Lotto,Apertura,Scadenza,Operatore",
-      ...lotti.map((l) => `${l.prodotto},${l.lotto},${l.apertura},${l.scadenza},${l.operatore}`),
-      "",
-      "Frigo,Temperatura,Min,Max,Stato",
-      ...frighi.map((f) => `${f.nome},${f.temp},${f.min},${f.max},${f.temp < f.min || f.temp > f.max ? "FUORI" : "OK"}`),
-      "",
-      "Log temp,Valore,°C,Quando",
-      ...logTemp.slice(0, 50).map((t) => `${t.nome},${t.temp},${new Date(t.ts).toLocaleString("it-IT")},${t.operatore}`),
-    ].join("\n");
-    const blob = new Blob([rows], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `asl-mente-locale-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -238,68 +192,18 @@ export default function App() {
         {tab === "dashboard" && (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-2">
-              <button onClick={() => setTab("tavoli")} className="rounded-2xl glass p-3 text-left"><p className="text-[9px] text-white/40">OCCUPAZIONE</p><p className="text-2xl font-black text-[#00D9FF]">{Math.round((occupati / 20) * 100)}%</p><p className="text-[10px] text-white/50">{occupati}/20 LIVE</p></button>
+              <button onClick={() => setTab("tavoli")} className="rounded-2xl glass p-3 text-left"><p className="text-[9px] text-white/40">OCCUPAZIONE</p><p className="text-2xl font-black text-[#00D9FF]">{Math.round((occupati / 20) * 100)}%</p></button>
               <div className="rounded-2xl glass p-3"><p className="text-[9px] text-white/40">RICAVI</p><p className="text-2xl font-black text-[#FF6B6B]">€{ricaviOggi}</p></div>
               <div className="rounded-2xl glass p-3"><p className="text-[9px] text-white/40">TEMPO MEDIO</p><p className="text-2xl font-black">{tempoMedio}min</p></div>
               <button onClick={() => setTab("haccp")} className="rounded-2xl glass p-3 text-left"><p className="text-[9px] text-white/40">MAGAZZINO</p><p className="text-2xl font-black text-[#FF1A1A]">{critici.length}</p></button>
               <button onClick={() => setTab("haccp")} className="rounded-2xl glass p-3 text-left"><p className="text-[9px] text-white/40">HACCP</p><p className="text-2xl font-black text-[#FF1A1A]">{frighiFuori.length}</p></button>
               <button onClick={() => setShowKds(true)} className="rounded-2xl glass p-3 text-left"><p className="text-[9px] text-white/40">KDS APERTO</p><p className="text-2xl font-black">{kdsCount}</p></button>
             </div>
-            <div className="rounded-[28px] glass-strong p-5 space-y-3">
-              <h2 className="font-black">ANALISI SERATA</h2>
-              <p className="text-sm text-white/60">Coperti stimati {occupati * 3} · ticket medio €{scontrini.length ? Math.round(ricaviOggi / Math.max(scontrini.length, 1)) : 29} · top Carbonara.</p>
-            </div>
+            <div className="rounded-[28px] glass-strong p-5"><h2 className="font-black">ANALISI SERATA</h2><p className="text-sm text-white/60 mt-2">Coperti stimati {occupati * 3} · ticket medio €{scontrini.length ? Math.round(ricaviOggi / Math.max(scontrini.length, 1)) : 29}.</p></div>
           </div>
         )}
         {tab === "menu" && <MenuTab onAdd={() => setShowAdd(true)} />}
-        {tab === "haccp" && (
-          <div className="grid gap-4">
-            <div className="glass-strong rounded-[24px] p-5">
-              <h3 className="font-black">📦 MAGAZZINO</h3>
-              {magazzino.map((m) => (
-                <div key={m.id} className="flex justify-between p-3 rounded-xl bg-white/5 mt-2">
-                  <div><p className="font-semibold">{m.nome}</p><p className="text-xs text-white/40">{m.qta} {m.unita}</p></div>
-                  <span className={m.qta < m.soglia ? "text-[#FF6B6B] text-[10px]" : "text-emerald-400 text-[10px]"}>{m.qta < m.soglia ? "sotto scorta" : "ok"}</span>
-                </div>
-              ))}
-            </div>
-            <div className="glass-strong rounded-[24px] p-5">
-              <h3 className="font-black">📦 LOTTI ATTIVI</h3>
-              {lotti.map((l) => (
-                <div key={l.id} className="flex justify-between p-3 rounded-xl bg-white/5 mt-2 text-sm">
-                  <span>{l.prodotto} • Lotto {l.lotto} • Scad {l.scadenza}</span>
-                  <span className={l.giorni_rimasti <= 2 ? "text-red-400" : "text-white/50"}>{l.giorni_rimasti}gg</span>
-                </div>
-              ))}
-            </div>
-            <div className="glass-strong rounded-[24px] p-5">
-              <h3 className="font-black">🏷️ CREA LOTTO + STAMPA ETICHETTA</h3>
-              <input value={lottoForm.prodotto} onChange={(e) => setLottoForm({ ...lottoForm, prodotto: e.target.value })} placeholder="Prodotto" className="w-full p-3 rounded-xl bg-black/30 border border-[#FF1A1A]/10 mt-3" />
-              <input value={lottoForm.lotto} onChange={(e) => setLottoForm({ ...lottoForm, lotto: e.target.value })} placeholder="Lotto" className="w-full p-3 rounded-xl bg-black/30 border border-[#FF1A1A]/10 mt-2" />
-              <input type="date" value={lottoForm.scadenza} onChange={(e) => setLottoForm({ ...lottoForm, scadenza: e.target.value })} className="w-full p-3 rounded-xl bg-black/30 border border-[#FF1A1A]/10 mt-2" />
-              <button onClick={() => void stampaLotto()} className="w-full mt-3 py-3 bg-[#FF1A1A] text-black rounded-full font-black">🖨️ GENERA ZPL + STAMPA 70x40</button>
-              {printMsg && <p className="text-[10px] text-white/40 mt-2">{printMsg}</p>}
-            </div>
-            <div className="glass-strong rounded-[24px] p-5">
-              <h3 className="font-black">🌡️ TEMPERATURA FRIGHI • OGNI 2H</h3>
-              {frighi.map((f) => {
-                const fuori = f.temp < f.min || f.temp > f.max;
-                return (
-                  <div key={f.id} className="flex gap-2 mt-3 items-center">
-                    <span className="flex-1 text-sm">{f.nome} <span className={fuori ? "text-[#FF1A1A]" : "text-emerald-400"}>{f.temp.toFixed(1)}°C</span></span>
-                    <input type="number" placeholder="°C" value={tempDraft[f.id] || ""} onChange={(e) => setTempDraft({ ...tempDraft, [f.id]: e.target.value })} className="w-20 p-2 rounded-xl bg-black/30 border border-[#FF1A1A]/10" />
-                    <button onClick={() => { const n = Number(tempDraft[f.id]); if (!Number.isNaN(n)) useMenteStore.getState().salvaTemp(f.id, n); }} className="px-3 py-2 bg-white/10 rounded-full text-xs">SALVA</button>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="glass-strong rounded-[24px] p-5">
-              <h3 className="font-black">📄 EXPORT ASL</h3>
-              <p className="text-xs text-white/40 mt-2">Genera CSV con lotti, temperature e scadenze. Pronto per controllo ASL.</p>
-              <button onClick={exportAsl} className="w-full mt-3 py-3 bg-white text-black rounded-full font-black">📥 SCARICA FILE ASL CSV</button>
-            </div>
-          </div>
-        )}
+        {tab === "haccp" && <HaccpTab />}
         {tab === "ia" && (
           <div className="rounded-[28px] glass-strong p-5">
             <h2 className="font-black">IA SOCIO</h2>
@@ -308,17 +212,11 @@ export default function App() {
           </div>
         )}
       </main>
-
       {showKds && (
         <div className="fixed inset-0 z-50 bg-black/80 p-4 flex items-end justify-center">
           <div className="w-full max-w-[560px] rounded-[28px] glass-strong p-5 max-h-[86vh] overflow-y-auto">
-            <div className="flex justify-between items-center">
-              <h2 className="font-black">KDS</h2>
-              <button onClick={() => setShowKds(false)}>✕</button>
-            </div>
-            <div className="flex gap-2 mt-3">{(["cucina", "bar"] as Reparto[]).map((r) => (
-              <button key={r} onClick={() => setKdsFiltro(r)} className={`text-[10px] px-3 py-1 rounded-full ${kdsFiltro === r ? "bg-[#FF1A1A] text-black font-black" : "glass"}`}>{r.toUpperCase()}</button>
-            ))}</div>
+            <div className="flex justify-between items-center"><h2 className="font-black">KDS</h2><button onClick={() => setShowKds(false)}>✕</button></div>
+            <div className="flex gap-2 mt-3">{(["cucina", "bar"] as Reparto[]).map((r) => (<button key={r} onClick={() => setKdsFiltro(r)} className={`text-[10px] px-3 py-1 rounded-full ${kdsFiltro === r ? "bg-[#FF1A1A] text-black font-black" : "glass"}`}>{r.toUpperCase()}</button>))}</div>
             <div className="space-y-2 mt-4">
               {kds.length === 0 && <p className="text-sm text-white/40">Nessun piatto in {kdsFiltro}.</p>}
               {kds.map((o) => (
@@ -331,35 +229,28 @@ export default function App() {
           </div>
         </div>
       )}
-
       {showAdd && (
         <div className="fixed inset-0 z-50 glass-strong p-6 flex items-end justify-center">
           <div className="w-full max-w-md space-y-3">
             <div className="flex justify-between"><h3 className="font-black">NUOVO PRODOTTO</h3><button onClick={() => setShowAdd(false)}>✕</button></div>
-            <input placeholder="Nome es Carbonara" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="w-full p-4 rounded-2xl bg-white/5 border border-[#FF1A1A]/10" />
-            <input placeholder="Prezzo 16" type="number" value={form.prezzo} onChange={(e) => setForm({ ...form, prezzo: e.target.value })} className="w-full p-4 rounded-2xl bg-white/5 border border-[#FF1A1A]/10" />
-            <button onClick={() => { void useMenteStore.getState().aggiungiProdotto(form); setShowAdd(false); setForm({ nome: "", prezzo: "", categoria: "Primi", reparto: "cucina", img: "🍝" }); }} className="w-full py-4 bg-[#FF1A1A] text-black rounded-full font-black">SALVA • VA SUBITO IN TUTTI I TELEFONI</button>
+            <input placeholder="Nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="w-full p-4 rounded-2xl bg-white/5 border border-[#FF1A1A]/10" />
+            <input placeholder="Prezzo" type="number" value={form.prezzo} onChange={(e) => setForm({ ...form, prezzo: e.target.value })} className="w-full p-4 rounded-2xl bg-white/5 border border-[#FF1A1A]/10" />
+            <button onClick={() => { void useMenteStore.getState().aggiungiProdotto(form); setShowAdd(false); setForm({ nome: "", prezzo: "", categoria: "Primi", reparto: "cucina", img: "🍝" }); }} className="w-full py-4 bg-[#FF1A1A] text-black rounded-full font-black">SALVA</button>
           </div>
         </div>
       )}
-
       {selezionato && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3">
           <div className="w-full max-w-[560px] rounded-[28px] glass-strong p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between"><h2 className="font-black">{selezionato.nome} • COMANDA</h2><button onClick={() => { setSelezionato(null); setComanda([]); }}>✕</button></div>
-            <p className="text-[10px] text-white/40 mt-1">Aggiungi piatti, swipe SX per togliere, poi invia in cucina</p>
-            <div className="grid grid-cols-2 gap-2 mt-4">{menuLive.map((p) => (
-              <button key={p.id} onClick={() => addToComanda(p)} className="text-left p-3 rounded-2xl glass"><p className="text-sm font-bold">{p.img} {p.nome}</p><p className="text-[10px] text-white/40">€{p.prezzo} • {p.reparto}</p></button>
-            ))}</div>
+            <p className="text-[10px] text-white/40 mt-1">Aggiungi, swipe SX elimina, poi invia</p>
+            <div className="grid grid-cols-2 gap-2 mt-4">{menuLive.map((p) => (<button key={p.id} onClick={() => addToComanda(p)} className="text-left p-3 rounded-2xl glass"><p className="text-sm font-bold">{p.img} {p.nome}</p></button>))}</div>
             {comanda.length > 0 && (
               <div className="mt-4 space-y-2">
-                <p className="text-[10px] tracking-widest text-white/40">COMANDA DA INVIARE • €{totaleComanda}</p>
+                <p className="text-[10px] text-white/40">COMANDA • €{totaleComanda}</p>
                 {comanda.map((r) => (
                   <SwipeRiga key={r.id} onDelete={() => setComanda((rows) => rows.filter((x) => x.id !== r.id))}>
-                    <div className="flex justify-between items-center p-3">
-                      <span>{r.piatto.img} {r.piatto.nome} x{r.qta}</span>
-                      <span className="text-xs text-white/40">€{r.piatto.prezzo * r.qta}</span>
-                    </div>
+                    <div className="flex justify-between items-center p-3"><span>{r.piatto.img} {r.piatto.nome} x{r.qta}</span><span className="text-xs text-white/40">€{r.piatto.prezzo * r.qta}</span></div>
                   </SwipeRiga>
                 ))}
                 <button onClick={() => void inviaComanda()} className="w-full py-3 rounded-full bg-white text-black font-black">INVIA IN CUCINA / BAR</button>
@@ -367,17 +258,14 @@ export default function App() {
             )}
             {selezionato.ordini.length > 0 && (
               <div className="mt-4 space-y-1">
-                <p className="text-[10px] tracking-widest text-white/40">GIÀ INVIATI</p>
-                {selezionato.ordini.map((o) => (
-                  <div key={o.id} className="text-sm text-white/60 flex justify-between"><span>{o.piatto.nome} x{o.qta}</span><span>{o.stato}</span></div>
-                ))}
+                <p className="text-[10px] text-white/40">GIÀ INVIATI</p>
+                {selezionato.ordini.map((o) => (<div key={o.id} className="text-sm text-white/60 flex justify-between"><span>{o.piatto.nome} x{o.qta}</span><span>{o.stato}</span></div>))}
               </div>
             )}
             <button onClick={() => { void useMenteStore.getState().chiudiTavolo(selezionato.id); setSelezionato(null); setComanda([]); }} className="w-full mt-4 py-3 rounded-full bg-[#FF1A1A] text-black font-black">CHIUDI TAVOLO</button>
           </div>
         </div>
       )}
-
       <nav className="fixed bottom-4 left-3 right-3 max-w-[760px] mx-auto z-40">
         <div className="rounded-full nav-pill px-3 py-3 flex justify-between items-end">
           {NAV.map((n) => {
