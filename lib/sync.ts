@@ -23,14 +23,21 @@ export function supabaseConfigured() {
   return Boolean(supabaseUrl() && supabaseKey());
 }
 
+type ChannelLike = {
+  on: (
+    type: string,
+    filter: unknown,
+    cb: (payload: { payload: SyncEvent }) => void
+  ) => ChannelLike;
+  send: (msg: { type: string; event: string; payload: SyncEvent }) => Promise<string>;
+  subscribe: () => string | void;
+};
+
 type ClientLike = {
   from: (table: string) => {
     insert: (row: Record<string, unknown>) => Promise<{ error: Error | null }>;
   };
-  channel: (name: string) => {
-    on: (type: string, filter: unknown, cb: (payload: { payload: SyncEvent }) => void) => { subscribe: () => void };
-    send: (msg: { type: string; event: string; payload: SyncEvent }) => Promise<string>;
-  };
+  channel: (name: string) => ChannelLike;
 };
 
 let sb: ClientLike | null = null;
