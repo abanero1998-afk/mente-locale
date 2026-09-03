@@ -7,6 +7,8 @@ import type {
   AvvisoSocio,
   Frigo,
   JobOffline,
+  LogTemp,
+  Lotto,
   Ordine,
   Piatto,
   Prenotazione,
@@ -52,19 +54,25 @@ const MAG_SEED: ArticoloMagazzino[] = [
 ];
 
 const FRIGO_SEED: Frigo[] = [
-  { id: "f1", nome: "Frigo A", temp: 6.8, min: 0, max: 4 },
-  { id: "f2", nome: "Frigo B", temp: 2.1, min: 0, max: 4 },
-  { id: "f3", nome: "Frigo C", temp: 8.4, min: 0, max: 4 },
-  { id: "f4", nome: "Cella", temp: 3.2, min: 0, max: 4 },
+  { id: "f1", nome: "Frigo Carne", temp: 2, min: 0, max: 4 },
+  { id: "f2", nome: "Frigo Latticini", temp: 3, min: 0, max: 4 },
+  { id: "f3", nome: "Cella", temp: -18, min: -22, max: -16 },
+];
+
+function giorniRimasti(scadenza: string) {
+  const d = new Date(scadenza);
+  if (Number.isNaN(d.getTime())) return 0;
+  return Math.ceil((d.getTime() - Date.now()) / 86400000);
+}
+
+const LOTTI_SEED: Lotto[] = [
+  { id: "l1", prodotto: "Mozzarella fiordilatte", lotto: "L12345", apertura: "2026-09-01", scadenza: "2026-09-04", giorni_rimasti: giorniRimasti("2026-09-04"), operatore: "Marco" },
+  { id: "l2", prodotto: "Guanciale", lotto: "L8891", apertura: "2026-09-02", scadenza: "2026-09-09", giorni_rimasti: giorniRimasti("2026-09-09"), operatore: "Sara" },
 ];
 
 const PREN_SEED: Prenotazione[] = [
   { id: "p1", initials: "MR", nome: "Mario Rossi", persone: 4, tavolo: "T03", quando: "Oggi 20:30", stato: "confermata", fonte: "telefono" },
-  { id: "p2", initials: "CB", nome: "Caterina Bianchi", persone: 2, tavolo: "T01", quando: "Oggi 21:00", stato: "vip", fonte: "telefono" },
-  { id: "p3", initials: "LV", nome: "Luca Verdi", persone: 6, tavolo: "T08", quando: "Oggi 19:00", stato: "cancellata", fonte: "walkin" },
-  { id: "p4", initials: "AN", nome: "Anna Neri", persone: 2, tavolo: "T12", quando: "Oggi 20:00", stato: "confermata", fonte: "telefono" },
   { id: "p5", initials: "GS", nome: "Giulia Sanna", persone: 3, tavolo: "T05", quando: "Oggi 20:15", stato: "da_confermare", fonte: "whatsapp" },
-  { id: "p6", initials: "FM", nome: "Fabio Moretti", persone: 5, tavolo: "T10", quando: "Oggi 21:30", stato: "da_confermare", fonte: "whatsapp" },
 ];
 
 type Store = {
@@ -72,6 +80,8 @@ type Store = {
   menu: Piatto[];
   magazzino: ArticoloMagazzino[];
   frighi: Frigo[];
+  lotti: Lotto[];
+  logTemp: LogTemp[];
   prenotazioni: Prenotazione[];
   scontrini: Scontrino[];
   avvisi: AvvisoSocio[];
@@ -81,12 +91,14 @@ type Store = {
   setOnline: (v: boolean) => void;
   applicaEvento: (e: SyncEvent) => void;
   pulse: (id: number) => void;
-  aggiungiOrdine: (tavoloId: number, piatto: Piatto) => Promise<Ordine>;
+  aggiungiOrdine: (tavoloId: number, piatto: Piatto, qta?: number) => Promise<Ordine>;
   setOrdineStato: (ordineId: string, stato: StatoOrdine) => Promise<void>;
   chiudiTavolo: (id: number) => Promise<void>;
   aggiungiProdotto: (form: { nome: string; prezzo: string; categoria: string; reparto: Piatto["reparto"]; img: string }) => Promise<Piatto>;
   eliminaProdotto: (id: string) => Promise<void>;
   confermaPrenotazione: (id: string) => void;
+  creaLotto: (form: { prodotto: string; lotto: string; scadenza: string }) => void;
+  salvaTemp: (frigoId: string, temp: number) => void;
   pushAvviso: (msg: string, urgente?: boolean) => void;
   syncCoda: () => Promise<void>;
 };
@@ -118,6 +130,8 @@ export const useMenteStore = create<Store>()(
       menu: MENU_SEED,
       magazzino: MAG_SEED,
       frighi: FRIGO_SEED,
+      lotti: LOTTI_SEED,
+      logTemp: [],
       prenotazioni: PREN_SEED,
       scontrini: [
         { id: "s1", tavoloId: 4, totale: 86, minuti: 42, ts: Date.now() - 3600000 },
@@ -130,13 +144,9 @@ export const useMenteStore = create<Store>()(
       hydrated: false,
       setOnline: (v) => set({ online: v }),
       pulse: (id) => {
-        set((s) => ({
-          tavoli: s.tavoli.map((t) => (t.id === id ? { ...t, animazione: "pulse" } : t)),
-        }));
+        set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === id ? { ...t, animazione: "pulse" } : t)) }));
         setTimeout(() => {
-          set((s) => ({
-            tavoli: s.tavoli.map((t) => (t.id === id ? { ...t, animazione: "none" } : t)),
-          }));
+          set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === id ? { ...t, animazione: "none" } : t)) }));
         }, 2000);
       },
       applicaEvento: (e) => {
@@ -144,12 +154,7 @@ export const useMenteStore = create<Store>()(
           set((s) => ({
             tavoli: s.tavoli.map((t) =>
               t.id === e.tavoloId
-                ? {
-                    ...t,
-                    stato: "occupato",
-                    animazione: "pulse",
-                    ordini: t.ordini.some((o) => o.id === e.ordine.id) ? t.ordini : [...t.ordini, e.ordine],
-                  }
+                ? { ...t, stato: "occupato", animazione: "pulse", ordini: t.ordini.some((o) => o.id === e.ordine.id) ? t.ordini : [...t.ordini, e.ordine] }
                 : t
             ),
           }));
@@ -157,43 +162,30 @@ export const useMenteStore = create<Store>()(
         }
         if (e.kind === "stato_ordine") {
           set((s) => ({
-            tavoli: s.tavoli.map((t) => ({
-              ...t,
-              ordini: t.ordini.map((o) => (o.id === e.ordineId ? { ...o, stato: e.stato } : o)),
-            })),
+            tavoli: s.tavoli.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === e.ordineId ? { ...o, stato: e.stato } : o)) })),
           }));
         }
         if (e.kind === "chiudi_tavolo") {
-          set((s) => ({
-            tavoli: s.tavoli.map((t) =>
-              t.id === e.tavoloId ? { ...t, stato: "libero", ordini: [], animazione: "none" } : t
-            ),
-          }));
+          set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === e.tavoloId ? { ...t, stato: "libero", ordini: [], animazione: "none" } : t)) }));
         }
         if (e.kind === "prodotto_add") {
-          set((s) => ({
-            menu: s.menu.some((p) => p.id === e.piatto.id) ? s.menu : [...s.menu, e.piatto],
-          }));
+          set((s) => ({ menu: s.menu.some((p) => p.id === e.piatto.id) ? s.menu : [...s.menu, e.piatto] }));
         }
         if (e.kind === "prodotto_del") {
           set((s) => ({ menu: s.menu.filter((p) => p.id !== e.prodottoId) }));
         }
-        if (e.kind === "avviso_socio") {
-          get().pushAvviso(e.msg, e.urgente);
-        }
+        if (e.kind === "avviso_socio") get().pushAvviso(e.msg, e.urgente);
       },
-      aggiungiOrdine: async (tavoloId, piatto) => {
+      aggiungiOrdine: async (tavoloId, piatto, qta = 1) => {
         const ordine: Ordine = {
           id: `${Date.now()}-${piatto.id}-${Math.random().toString(36).slice(2, 6)}`,
           piatto,
-          qta: 1,
+          qta,
           stato: "ordinato",
           ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }),
         };
         set((s) => ({
-          tavoli: s.tavoli.map((t) =>
-            t.id === tavoloId ? { ...t, ordini: [...t.ordini, ordine], stato: "occupato", animazione: "pulse" } : t
-          ),
+          tavoli: s.tavoli.map((t) => (t.id === tavoloId ? { ...t, ordini: [...t.ordini, ordine], stato: "occupato", animazione: "pulse" } : t)),
         }));
         get().pulse(tavoloId);
         const ev: SyncEvent = { kind: "nuovo_ordine", tavoloId, ordine, deviceId };
@@ -202,10 +194,7 @@ export const useMenteStore = create<Store>()(
       },
       setOrdineStato: async (ordineId, stato) => {
         set((s) => ({
-          tavoli: s.tavoli.map((t) => ({
-            ...t,
-            ordini: t.ordini.map((o) => (o.id === ordineId ? { ...o, stato } : o)),
-          })),
+          tavoli: s.tavoli.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === ordineId ? { ...o, stato } : o)) })),
         }));
         const ev: SyncEvent = { kind: "stato_ordine", ordineId, stato, deviceId };
         await pushEvent(ev, { id: `st-${ordineId}-${Date.now()}`, tipo: "stato", tavoloId: 0, ordineId, stato, ts: Date.now() }, set);
@@ -241,16 +230,33 @@ export const useMenteStore = create<Store>()(
         await pushEvent(ev, { id: `pd-${id}`, tipo: "prodotto_del", tavoloId: 0, prodottoId: id, ts: Date.now() }, set);
       },
       confermaPrenotazione: (id) => {
+        set((s) => ({ prenotazioni: s.prenotazioni.map((p) => (p.id === id ? { ...p, stato: "confermata" } : p)) }));
+      },
+      creaLotto: (form) => {
+        const oggi = new Date().toISOString().slice(0, 10);
+        const lotto: Lotto = {
+          id: `lt-${Date.now()}`,
+          prodotto: form.prodotto.trim() || "Prodotto",
+          lotto: form.lotto.trim() || `L${Date.now().toString().slice(-5)}`,
+          apertura: oggi,
+          scadenza: form.scadenza || oggi,
+          giorni_rimasti: giorniRimasti(form.scadenza || oggi),
+          operatore: "Sala",
+        };
+        set((s) => ({ lotti: [lotto, ...s.lotti] }));
+      },
+      salvaTemp: (frigoId, temp) => {
+        const f = get().frighi.find((x) => x.id === frigoId);
+        if (!f) return;
         set((s) => ({
-          prenotazioni: s.prenotazioni.map((p) => (p.id === id ? { ...p, stato: "confermata" } : p)),
+          frighi: s.frighi.map((x) => (x.id === frigoId ? { ...x, temp } : x)),
+          logTemp: [{ id: `t-${Date.now()}`, frigoId, nome: f.nome, temp, ts: Date.now(), operatore: "Sala" }, ...s.logTemp].slice(0, 200),
         }));
       },
       pushAvviso: (msg, urgente = false) => {
         set((s) => {
           if (s.avvisi[0]?.msg === msg && Date.now() - s.avvisi[0].ts < 20000) return s;
-          return {
-            avvisi: [{ id: `ia-${Date.now()}`, msg, urgente, ts: Date.now() }, ...s.avvisi].slice(0, 20),
-          };
+          return { avvisi: [{ id: `ia-${Date.now()}`, msg, urgente, ts: Date.now() }, ...s.avvisi].slice(0, 20) };
         });
       },
       syncCoda: async () => {
@@ -273,7 +279,7 @@ export const useMenteStore = create<Store>()(
         set({ codaOffline: left });
       },
     }),
-    { name: "mente-locale-v3" }
+    { name: "mente-locale-v4" }
   )
 );
 
@@ -290,8 +296,6 @@ export function wireSync() {
   });
   window.addEventListener("offline", () => useMenteStore.setState({ online: false }));
   setInterval(() => {
-    if (navigator.onLine && useMenteStore.getState().codaOffline.length) {
-      void useMenteStore.getState().syncCoda();
-    }
+    if (navigator.onLine && useMenteStore.getState().codaOffline.length) void useMenteStore.getState().syncCoda();
   }, 5000);
 }

@@ -21,6 +21,12 @@ export type Ordine = {
   ora: string;
 };
 
+export type RigaComanda = {
+  id: string;
+  piatto: Piatto;
+  qta: number;
+};
+
 export type Tavolo = {
   id: number;
   nome: string;
@@ -49,6 +55,25 @@ export type Frigo = {
   temp: number;
   min: number;
   max: number;
+};
+
+export type LogTemp = {
+  id: string;
+  frigoId: string;
+  nome: string;
+  temp: number;
+  ts: number;
+  operatore: string;
+};
+
+export type Lotto = {
+  id: string;
+  prodotto: string;
+  lotto: string;
+  apertura: string;
+  scadenza: string;
+  giorni_rimasti: number;
+  operatore: string;
 };
 
 export type Prenotazione = {
