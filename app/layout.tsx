@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import IaBanner from "./ia-banner";
 
 export const metadata: Metadata = {
   title: "Mente Locale — Restaurant OS",
@@ -35,7 +36,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="Mente Locale" />
       </head>
-      <body className="antialiased font-sans">{children}</body>
+      <body className="antialiased font-sans">
+        <IaBanner />
+        {children}
+      </body>
     </html>
   );
 }
