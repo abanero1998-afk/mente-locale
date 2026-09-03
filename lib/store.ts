@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   ArticoloMagazzino,
+  AvvisoSocio,
   Frigo,
   JobOffline,
   Ordine,
@@ -28,7 +29,7 @@ function makeTavoli(): Tavolo[] {
     y: 14 + Math.floor(i / 5) * 22,
     clienti: [2, 2, 4, 3, 5, 6][i % 6],
     cameriere: ["Luca", "Sara", "Marco"][i % 3],
-    tempo: (i * 7) % 60,
+    tempo: i === 2 ? 73 : (i * 7) % 60,
     ordini: [],
     animazione: "none" as const,
   }));
@@ -73,6 +74,7 @@ type Store = {
   frighi: Frigo[];
   prenotazioni: Prenotazione[];
   scontrini: Scontrino[];
+  avvisi: AvvisoSocio[];
   codaOffline: JobOffline[];
   online: boolean;
   hydrated: boolean;
@@ -85,6 +87,7 @@ type Store = {
   aggiungiProdotto: (form: { nome: string; prezzo: string; categoria: string; reparto: Piatto["reparto"]; img: string }) => Promise<Piatto>;
   eliminaProdotto: (id: string) => Promise<void>;
   confermaPrenotazione: (id: string) => void;
+  pushAvviso: (msg: string, urgente?: boolean) => void;
   syncCoda: () => Promise<void>;
 };
 
@@ -121,6 +124,7 @@ export const useMenteStore = create<Store>()(
         { id: "s2", tavoloId: 7, totale: 124, minuti: 51, ts: Date.now() - 1800000 },
         { id: "s3", tavoloId: 11, totale: 58, minuti: 38, ts: Date.now() - 900000 },
       ],
+      avvisi: [],
       codaOffline: [],
       online: typeof navigator === "undefined" ? true : navigator.onLine,
       hydrated: false,
@@ -173,6 +177,9 @@ export const useMenteStore = create<Store>()(
         }
         if (e.kind === "prodotto_del") {
           set((s) => ({ menu: s.menu.filter((p) => p.id !== e.prodottoId) }));
+        }
+        if (e.kind === "avviso_socio") {
+          get().pushAvviso(e.msg, e.urgente);
         }
       },
       aggiungiOrdine: async (tavoloId, piatto) => {
@@ -237,6 +244,14 @@ export const useMenteStore = create<Store>()(
         set((s) => ({
           prenotazioni: s.prenotazioni.map((p) => (p.id === id ? { ...p, stato: "confermata" } : p)),
         }));
+      },
+      pushAvviso: (msg, urgente = false) => {
+        set((s) => {
+          if (s.avvisi[0]?.msg === msg && Date.now() - s.avvisi[0].ts < 20000) return s;
+          return {
+            avvisi: [{ id: `ia-${Date.now()}`, msg, urgente, ts: Date.now() }, ...s.avvisi].slice(0, 20),
+          };
+        });
       },
       syncCoda: async () => {
         const fromIdb = await codaAll().catch(() => get().codaOffline);
