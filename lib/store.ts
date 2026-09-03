@@ -12,6 +12,8 @@ import type {
   Ordine,
   Piatto,
   Prenotazione,
+  PrinterConfig,
+  Pulizia,
   Scontrino,
   StatoOrdine,
   SyncEvent,
@@ -54,12 +56,12 @@ const MAG_SEED: ArticoloMagazzino[] = [
 ];
 
 const FRIGO_SEED: Frigo[] = [
-  { id: "f1", nome: "Frigo Carne", temp: 2, min: 0, max: 4 },
-  { id: "f2", nome: "Frigo Latticini", temp: 3, min: 0, max: 4 },
-  { id: "f3", nome: "Cella", temp: -18, min: -22, max: -16 },
+  { id: "f1", nome: "Frigo Carne", temp: 2, min: 0, max: 4, lastCheck: 0 },
+  { id: "f2", nome: "Frigo Latticini", temp: 3, min: 0, max: 4, lastCheck: 0 },
+  { id: "f3", nome: "Cella", temp: -18, min: -22, max: -16, lastCheck: 0 },
 ];
 
-function giorniRimasti(scadenza: string) {
+export function giorniRimasti(scadenza: string) {
   const d = new Date(scadenza);
   if (Number.isNaN(d.getTime())) return 0;
   return Math.ceil((d.getTime() - Date.now()) / 86400000);
@@ -70,10 +72,19 @@ const LOTTI_SEED: Lotto[] = [
   { id: "l2", prodotto: "Guanciale", lotto: "L8891", apertura: "2026-09-02", scadenza: "2026-09-09", giorni_rimasti: giorniRimasti("2026-09-09"), operatore: "Sara" },
 ];
 
-const PREN_SEED: Prenotazione[] = [
-  { id: "p1", initials: "MR", nome: "Mario Rossi", persone: 4, tavolo: "T03", quando: "Oggi 20:30", stato: "confermata", fonte: "telefono" },
-  { id: "p5", initials: "GS", nome: "Giulia Sanna", persone: 3, tavolo: "T05", quando: "Oggi 20:15", stato: "da_confermare", fonte: "whatsapp" },
+const PULIZIA_SEED: Pulizia[] = [
+  { id: "c1", zona: "Cucina pavimento", operatore: "Marco", fatto: false, ts: Date.now(), note: "Fine servizio" },
+  { id: "c2", zona: "Bagni", operatore: "Sara", fatto: true, ts: Date.now() - 3600000, note: "Ore 18" },
+  { id: "c3", zona: "Sala tavoli", operatore: "Luca", fatto: false, ts: Date.now(), note: "" },
 ];
+
+const PRINTER_SEED: PrinterConfig = {
+  mode: "zpl",
+  ip: "192.168.1.80",
+  port: "9100",
+  btName: "Zebra-ZQ520",
+  httpsUrl: "",
+};
 
 type Store = {
   tavoli: Tavolo[];
@@ -82,6 +93,8 @@ type Store = {
   frighi: Frigo[];
   lotti: Lotto[];
   logTemp: LogTemp[];
+  pulizie: Pulizia[];
+  printer: PrinterConfig;
   prenotazioni: Prenotazione[];
   scontrini: Scontrino[];
   avvisi: AvvisoSocio[];
@@ -97,8 +110,21 @@ type Store = {
   aggiungiProdotto: (form: { nome: string; prezzo: string; categoria: string; reparto: Piatto["reparto"]; img: string }) => Promise<Piatto>;
   eliminaProdotto: (id: string) => Promise<void>;
   confermaPrenotazione: (id: string) => void;
-  creaLotto: (form: { prodotto: string; lotto: string; scadenza: string }) => void;
+  creaLotto: (form: { prodotto: string; lotto: string; scadenza: string; operatore?: string }) => void;
+  updateLotto: (id: string, patch: Partial<Lotto>) => void;
+  deleteLotto: (id: string) => void;
+  addMag: (form: { nome: string; qta: string; unita: string; soglia: string }) => void;
+  updateMag: (id: string, patch: Partial<ArticoloMagazzino>) => void;
+  deleteMag: (id: string) => void;
+  addFrigo: (form: { nome: string; temp: string; min: string; max: string }) => void;
+  updateFrigo: (id: string, patch: Partial<Frigo>) => void;
+  deleteFrigo: (id: string) => void;
   salvaTemp: (frigoId: string, temp: number) => void;
+  confermaTemp: (frigoId: string) => void;
+  addPulizia: (form: { zona: string; operatore: string; note: string }) => void;
+  togglePulizia: (id: string) => void;
+  deletePulizia: (id: string) => void;
+  setPrinter: (patch: Partial<PrinterConfig>) => void;
   pushAvviso: (msg: string, urgente?: boolean) => void;
   syncCoda: () => Promise<void>;
 };
@@ -132,11 +158,14 @@ export const useMenteStore = create<Store>()(
       frighi: FRIGO_SEED,
       lotti: LOTTI_SEED,
       logTemp: [],
-      prenotazioni: PREN_SEED,
+      pulizie: PULIZIA_SEED,
+      printer: PRINTER_SEED,
+      prenotazioni: [
+        { id: "p1", initials: "MR", nome: "Mario Rossi", persone: 4, tavolo: "T03", quando: "Oggi 20:30", stato: "confermata", fonte: "telefono" },
+      ],
       scontrini: [
         { id: "s1", tavoloId: 4, totale: 86, minuti: 42, ts: Date.now() - 3600000 },
         { id: "s2", tavoloId: 7, totale: 124, minuti: 51, ts: Date.now() - 1800000 },
-        { id: "s3", tavoloId: 11, totale: 58, minuti: 38, ts: Date.now() - 900000 },
       ],
       avvisi: [],
       codaOffline: [],
@@ -161,19 +190,13 @@ export const useMenteStore = create<Store>()(
           get().pulse(e.tavoloId);
         }
         if (e.kind === "stato_ordine") {
-          set((s) => ({
-            tavoli: s.tavoli.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === e.ordineId ? { ...o, stato: e.stato } : o)) })),
-          }));
+          set((s) => ({ tavoli: s.tavoli.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === e.ordineId ? { ...o, stato: e.stato } : o)) })) }));
         }
         if (e.kind === "chiudi_tavolo") {
           set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === e.tavoloId ? { ...t, stato: "libero", ordini: [], animazione: "none" } : t)) }));
         }
-        if (e.kind === "prodotto_add") {
-          set((s) => ({ menu: s.menu.some((p) => p.id === e.piatto.id) ? s.menu : [...s.menu, e.piatto] }));
-        }
-        if (e.kind === "prodotto_del") {
-          set((s) => ({ menu: s.menu.filter((p) => p.id !== e.prodottoId) }));
-        }
+        if (e.kind === "prodotto_add") set((s) => ({ menu: s.menu.some((p) => p.id === e.piatto.id) ? s.menu : [...s.menu, e.piatto] }));
+        if (e.kind === "prodotto_del") set((s) => ({ menu: s.menu.filter((p) => p.id !== e.prodottoId) }));
         if (e.kind === "avviso_socio") get().pushAvviso(e.msg, e.urgente);
       },
       aggiungiOrdine: async (tavoloId, piatto, qta = 1) => {
@@ -184,28 +207,23 @@ export const useMenteStore = create<Store>()(
           stato: "ordinato",
           ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }),
         };
-        set((s) => ({
-          tavoli: s.tavoli.map((t) => (t.id === tavoloId ? { ...t, ordini: [...t.ordini, ordine], stato: "occupato", animazione: "pulse" } : t)),
-        }));
+        set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === tavoloId ? { ...t, ordini: [...t.ordini, ordine], stato: "occupato", animazione: "pulse" } : t)) }));
         get().pulse(tavoloId);
         const ev: SyncEvent = { kind: "nuovo_ordine", tavoloId, ordine, deviceId };
         await pushEvent(ev, { id: ordine.id, tipo: "ordine", tavoloId, piatto, ordine, ts: Date.now() }, set);
         return ordine;
       },
       setOrdineStato: async (ordineId, stato) => {
-        set((s) => ({
-          tavoli: s.tavoli.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === ordineId ? { ...o, stato } : o)) })),
-        }));
+        set((s) => ({ tavoli: s.tavoli.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === ordineId ? { ...o, stato } : o)) })) }));
         const ev: SyncEvent = { kind: "stato_ordine", ordineId, stato, deviceId };
         await pushEvent(ev, { id: `st-${ordineId}-${Date.now()}`, tipo: "stato", tavoloId: 0, ordineId, stato, ts: Date.now() }, set);
       },
       chiudiTavolo: async (id) => {
         const tav = get().tavoli.find((t) => t.id === id);
         const totale = tav ? tav.ordini.reduce((s, o) => s + o.piatto.prezzo * o.qta, 0) : 0;
-        const minuti = tav?.tempo || 45;
         set((s) => ({
           tavoli: s.tavoli.map((t) => (t.id === id ? { ...t, stato: "libero", ordini: [], animazione: "none" } : t)),
-          scontrini: [...s.scontrini, { id: `sc-${id}-${Date.now()}`, tavoloId: id, totale, minuti, ts: Date.now() }],
+          scontrini: [...s.scontrini, { id: `sc-${id}-${Date.now()}`, tavoloId: id, totale, minuti: tav?.tempo || 45, ts: Date.now() }],
         }));
         const ev: SyncEvent = { kind: "chiudi_tavolo", tavoloId: id, deviceId };
         await pushEvent(ev, { id: `cl-${id}-${Date.now()}`, tipo: "chiudi", tavoloId: id, ts: Date.now() }, set);
@@ -229,30 +247,54 @@ export const useMenteStore = create<Store>()(
         const ev: SyncEvent = { kind: "prodotto_del", prodottoId: id, deviceId };
         await pushEvent(ev, { id: `pd-${id}`, tipo: "prodotto_del", tavoloId: 0, prodottoId: id, ts: Date.now() }, set);
       },
-      confermaPrenotazione: (id) => {
-        set((s) => ({ prenotazioni: s.prenotazioni.map((p) => (p.id === id ? { ...p, stato: "confermata" } : p)) }));
-      },
+      confermaPrenotazione: (id) => set((s) => ({ prenotazioni: s.prenotazioni.map((p) => (p.id === id ? { ...p, stato: "confermata" } : p)) })),
       creaLotto: (form) => {
         const oggi = new Date().toISOString().slice(0, 10);
-        const lotto: Lotto = {
-          id: `lt-${Date.now()}`,
-          prodotto: form.prodotto.trim() || "Prodotto",
-          lotto: form.lotto.trim() || `L${Date.now().toString().slice(-5)}`,
-          apertura: oggi,
-          scadenza: form.scadenza || oggi,
-          giorni_rimasti: giorniRimasti(form.scadenza || oggi),
-          operatore: "Sala",
-        };
-        set((s) => ({ lotti: [lotto, ...s.lotti] }));
+        set((s) => ({
+          lotti: [{
+            id: `lt-${Date.now()}`,
+            prodotto: form.prodotto.trim() || "Prodotto",
+            lotto: form.lotto.trim() || `L${Date.now().toString().slice(-5)}`,
+            apertura: oggi,
+            scadenza: form.scadenza || oggi,
+            giorni_rimasti: giorniRimasti(form.scadenza || oggi),
+            operatore: form.operatore || "Sala",
+          }, ...s.lotti],
+        }));
       },
+      updateLotto: (id, patch) => set((s) => ({
+        lotti: s.lotti.map((l) => (l.id === id ? { ...l, ...patch, giorni_rimasti: giorniRimasti(patch.scadenza || l.scadenza) } : l)),
+      })),
+      deleteLotto: (id) => set((s) => ({ lotti: s.lotti.filter((l) => l.id !== id) })),
+      addMag: (form) => set((s) => ({
+        magazzino: [...s.magazzino, { id: `m-${Date.now()}`, nome: form.nome || "Articolo", qta: Number(form.qta) || 0, unita: form.unita || "kg", soglia: Number(form.soglia) || 1 }],
+      })),
+      updateMag: (id, patch) => set((s) => ({ magazzino: s.magazzino.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
+      deleteMag: (id) => set((s) => ({ magazzino: s.magazzino.filter((m) => m.id !== id) })),
+      addFrigo: (form) => set((s) => ({
+        frighi: [...s.frighi, { id: `f-${Date.now()}`, nome: form.nome || "Frigo", temp: Number(form.temp) || 0, min: Number(form.min) || 0, max: Number(form.max) || 4, lastCheck: 0 }],
+      })),
+      updateFrigo: (id, patch) => set((s) => ({ frighi: s.frighi.map((f) => (f.id === id ? { ...f, ...patch } : f)) })),
+      deleteFrigo: (id) => set((s) => ({ frighi: s.frighi.filter((f) => f.id !== id) })),
       salvaTemp: (frigoId, temp) => {
         const f = get().frighi.find((x) => x.id === frigoId);
         if (!f) return;
         set((s) => ({
-          frighi: s.frighi.map((x) => (x.id === frigoId ? { ...x, temp } : x)),
+          frighi: s.frighi.map((x) => (x.id === frigoId ? { ...x, temp, lastCheck: Date.now() } : x)),
           logTemp: [{ id: `t-${Date.now()}`, frigoId, nome: f.nome, temp, ts: Date.now(), operatore: "Sala" }, ...s.logTemp].slice(0, 200),
         }));
       },
+      confermaTemp: (frigoId) => {
+        const f = get().frighi.find((x) => x.id === frigoId);
+        if (!f) return;
+        get().salvaTemp(frigoId, f.temp);
+      },
+      addPulizia: (form) => set((s) => ({
+        pulizie: [{ id: `c-${Date.now()}`, zona: form.zona || "Zona", operatore: form.operatore || "Sala", fatto: false, ts: Date.now(), note: form.note || "" }, ...s.pulizie],
+      })),
+      togglePulizia: (id) => set((s) => ({ pulizie: s.pulizie.map((p) => (p.id === id ? { ...p, fatto: !p.fatto, ts: Date.now() } : p)) })),
+      deletePulizia: (id) => set((s) => ({ pulizie: s.pulizie.filter((p) => p.id !== id) })),
+      setPrinter: (patch) => set((s) => ({ printer: { ...s.printer, ...patch } })),
       pushAvviso: (msg, urgente = false) => {
         set((s) => {
           if (s.avvisi[0]?.msg === msg && Date.now() - s.avvisi[0].ts < 20000) return s;
@@ -279,7 +321,7 @@ export const useMenteStore = create<Store>()(
         set({ codaOffline: left });
       },
     }),
-    { name: "mente-locale-v4" }
+    { name: "mente-locale-v5" }
   )
 );
 
