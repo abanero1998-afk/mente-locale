@@ -70,6 +70,13 @@ export type Scontrino = {
   ts: number;
 };
 
+export type AvvisoSocio = {
+  id: string;
+  msg: string;
+  urgente: boolean;
+  ts: number;
+};
+
 export type JobOffline = {
   id: string;
   tipo: "ordine" | "stato" | "chiudi" | "prodotto_add" | "prodotto_del";
@@ -87,4 +94,5 @@ export type SyncEvent =
   | { kind: "stato_ordine"; ordineId: string; stato: StatoOrdine; deviceId: string }
   | { kind: "chiudi_tavolo"; tavoloId: number; deviceId: string }
   | { kind: "prodotto_add"; piatto: Piatto; deviceId: string }
-  | { kind: "prodotto_del"; prodottoId: string; deviceId: string };
+  | { kind: "prodotto_del"; prodottoId: string; deviceId: string }
+  | { kind: "avviso_socio"; msg: string; urgente: boolean; deviceId: string };
