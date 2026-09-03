@@ -2,6 +2,7 @@ export type Reparto = "cucina" | "bar";
 export type StatoTavolo = "libero" | "occupato" | "prenotato" | "conto";
 export type StatoOrdine = "ordinato" | "in_prep" | "pronto";
 export type StatoPrenotazione = "da_confermare" | "confermata" | "vip" | "cancellata";
+export type PrinterMode = "zpl" | "bt" | "https";
 
 export type Piatto = {
   id: string;
@@ -55,6 +56,7 @@ export type Frigo = {
   temp: number;
   min: number;
   max: number;
+  lastCheck: number;
 };
 
 export type LogTemp = {
@@ -74,6 +76,23 @@ export type Lotto = {
   scadenza: string;
   giorni_rimasti: number;
   operatore: string;
+};
+
+export type Pulizia = {
+  id: string;
+  zona: string;
+  operatore: string;
+  fatto: boolean;
+  ts: number;
+  note: string;
+};
+
+export type PrinterConfig = {
+  mode: PrinterMode;
+  ip: string;
+  port: string;
+  btName: string;
+  httpsUrl: string;
 };
 
 export type Prenotazione = {
