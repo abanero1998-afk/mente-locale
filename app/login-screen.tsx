@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { listLocali, useAuth } from "@/lib/auth";
 import { DEMO_STAFF_PINS } from "@/lib/tenants";
+import { playUi } from "@/lib/sounds";
 
 type Tab = "entra" | "crea";
 
@@ -26,13 +27,13 @@ export function LoginScreen() {
 
         <div className="flex gap-2 p-1 rounded-full glass">
           <button
-            onClick={() => setTab("entra")}
+            onClick={() => { playUi("nav"); setTab("entra"); }}
             className={`flex-1 py-2 rounded-full text-[11px] font-black ${tab === "entra" ? "bg-[#FF1A1A] text-black" : "text-white/50"}`}
           >
             ENTRA
           </button>
           <button
-            onClick={() => setTab("crea")}
+            onClick={() => { playUi("nav"); setTab("crea"); }}
             className={`flex-1 py-2 rounded-full text-[11px] font-black ${tab === "crea" ? "bg-[#FF1A1A] text-black" : "text-white/50"}`}
           >
             CREA LOCALE
@@ -57,7 +58,7 @@ export function LoginScreen() {
             />
             {errore && <p className="text-xs text-[#FF6B6B]">{errore}</p>}
             <button
-              onClick={() => useAuth.getState().createLocale(nome, pinTit)}
+              onClick={() => { playUi("success"); useAuth.getState().createLocale(nome, pinTit); }}
               className="w-full py-4 rounded-full bg-[#FF1A1A] text-black font-black"
             >
               CREA E ACCEDI
@@ -103,7 +104,7 @@ export function LoginScreen() {
             />
             {errore && <p className="text-xs text-[#FF6B6B]">{errore}</p>}
             <button
-              onClick={() => useAuth.getState().login(localeId, pin)}
+              onClick={() => { playUi("success"); useAuth.getState().login(localeId, pin); }}
               className="w-full py-4 rounded-full bg-[#FF1A1A] text-black font-black"
             >
               ENTRA
