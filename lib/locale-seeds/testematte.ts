@@ -224,3 +224,36 @@ export const TESTEMATTE_MENU: Piatto[] = [
     img: U("photo-1563805042-7684c019e1cb"),
   },
 ];
+
+/** A8010V @ LAN — ONLY for locale id testematte. Do not reuse for other locali. */
+export const TESTEMATTE_HARDWARE = {
+  model: "A8010V",
+  vendor: "3i_xonxoff" as const,
+  host: "192.168.1.60",
+  port: 1723,
+  enabled: true,
+  path: "/",
+  devid: "A8010V",
+  timeoutMs: 10000,
+  useHttps: false,
+};
+
+/** RT patch for FiscalBundle.rt when hardware is empty. */
+export function testeMatteRtSeed() {
+  const h = TESTEMATTE_HARDWARE;
+  return {
+    enabled: h.enabled,
+    vendor: h.vendor,
+    host: h.host,
+    port: h.port,
+    path: h.path,
+    devid: h.devid,
+    timeoutMs: h.timeoutMs,
+    useHttps: h.useHttps,
+  };
+}
+
+export function isRtHardwareEmpty(rt: { host?: string } | null | undefined): boolean {
+  return !(rt?.host || "").trim();
+}
+

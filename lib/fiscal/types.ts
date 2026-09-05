@@ -16,7 +16,7 @@ export type FiscalProfile = {
   aliquotaDefault: AliquotaIva;
 };
 
-export type RtVendor = "epson_fpmate" | "custom_http" | "demo";
+export type RtVendor = "epson_fpmate" | "3i_xonxoff" | "custom_http" | "demo";
 
 export type RtConfig = {
   enabled: boolean;
@@ -27,6 +27,8 @@ export type RtConfig = {
   devid: string;
   timeoutMs: number;
   useHttps: boolean;
+  /** Es. A8010V — solo metadato installazione. */
+  hardwareModel?: string;
 };
 
 export type PosProvider = "manual" | "sumup" | "nexi" | "stripe_terminal";
@@ -103,6 +105,7 @@ export function defaultFiscalBundle(): FiscalBundle {
       devid: "local_printer",
       timeoutMs: 10000,
       useHttps: false,
+      hardwareModel: undefined,
     },
     pos: {
       enabled: false,

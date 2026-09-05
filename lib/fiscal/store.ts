@@ -12,6 +12,7 @@ import {
   type RtConfig,
 } from "./types";
 import { testConnection } from "./epson-fpmate";
+import { test3iXonxoffConnection } from "./xonxoff-3i";
 
 type FiscalState = FiscalBundle & {
   rtLastOnline: boolean | null;
@@ -83,7 +84,10 @@ export const useFiscal = create<FiscalState>()(
       },
       testRt: async () => {
         const rt = get().rt;
-        const res = await testConnection(rt);
+        const res =
+          rt.vendor === "3i_xonxoff"
+            ? await test3iXonxoffConnection(rt)
+            : await testConnection(rt);
         set({ rtLastOnline: res.ok, rtLastCheckTs: Date.now() });
         return { ok: res.ok, error: res.error };
       },

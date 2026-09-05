@@ -12,6 +12,9 @@ import {
   TESTEMATTE_MENU,
   TESTEMATTE_MENU_SEED_FLAG,
   TESTEMATTE_MENU_SEED_VERSION,
+  isRtHardwareEmpty,
+  testeMatteRtSeed,
+  TESTEMATTE_HARDWARE,
 } from "./locale-seeds/testematte";
 import type { Piatto } from "./types";
 
@@ -36,6 +39,21 @@ export function ensureTesteMatteMenu() {
     useMenteStore.setState({ menu: TESTEMATTE_MENU });
     localStorage.setItem(TESTEMATTE_MENU_SEED_FLAG, TESTEMATTE_MENU_SEED_VERSION);
   }
+}
+
+/** Prefill A8010V / 3i_xonxoff ONLY for testematte when RT host empty. Never other locali. */
+export function ensureTesteMatteHardware() {
+  if (typeof localStorage === "undefined") return;
+  if (getCurrentLocaleId() !== TESTEMATTE_LOCALE_ID) return;
+
+  const fiscal = useFiscal.getState();
+  const tenantRt = getLocale(TESTEMATTE_LOCALE_ID)?.settings?.fiscal?.rt;
+  // Respect any existing host (runtime or tenant) — do not overwrite titolare edits.
+  if (!isRtHardwareEmpty(fiscal.rt) || !isRtHardwareEmpty(tenantRt)) return;
+
+  const seed = { ...testeMatteRtSeed(), hardwareModel: TESTEMATTE_HARDWARE.model };
+  useFiscal.getState().setRt(seed);
+  useFiscal.getState().syncToTenant();
 }
 
 /** Switch all persisted stores to a locale namespace and rehydrate. */
@@ -67,6 +85,7 @@ export function activateLocale(localeId: string) {
     }
     if (id === TESTEMATTE_LOCALE_ID) {
       ensureTesteMatteMenu();
+      ensureTesteMatteHardware();
     }
     rebindSyncChannel();
     useMenteStore.setState({ hydrated: true });

@@ -4,7 +4,11 @@ import {
   TESTEMATTE_LOCALE_ID,
   TESTEMATTE_NOME,
   TESTEMATTE_PIN,
+  TESTEMATTE_HARDWARE,
+  isRtHardwareEmpty,
+  testeMatteRtSeed,
 } from "./locale-seeds/testematte";
+import { defaultFiscalBundle } from "./fiscal/types";
 
 export type LocaleSettings = {
   fondoIniziale?: number;
@@ -63,6 +67,11 @@ function buildTesteMatte(): LocaleTenant {
       fondoIniziale: 150,
       nomeBrand: TESTEMATTE_NOME,
       waSocio: "",
+      // A8010V hardware seed — only this locale.
+      fiscal: {
+        ...defaultFiscalBundle(),
+        rt: { ...testeMatteRtSeed(), hardwareModel: TESTEMATTE_HARDWARE.model },
+      },
     },
     staff,
   };
@@ -135,8 +144,37 @@ export function ensureSeededLocali(): LocaleTenant[] {
     } catch {
       memoryLocali = reg.locali.slice();
     }
-  } else if (!memoryLocali) {
-    memoryLocali = reg.locali.slice();
+  } else {
+    // Existing testematte: prefill A8010V only when RT host still empty.
+    const idx = reg.locali.findIndex((l) => l.id === TESTEMATTE_LOCALE_ID);
+    if (idx >= 0) {
+      const cur = reg.locali[idx];
+      const rt = cur.settings?.fiscal?.rt;
+      if (isRtHardwareEmpty(rt)) {
+        const base = defaultFiscalBundle();
+        const fiscal = {
+          ...base,
+          ...(cur.settings?.fiscal || {}),
+          profilo: { ...base.profilo, ...(cur.settings?.fiscal?.profilo || {}) },
+          rt: { ...testeMatteRtSeed(), hardwareModel: TESTEMATTE_HARDWARE.model },
+          pos: { ...base.pos, ...(cur.settings?.fiscal?.pos || {}) },
+          printer: { ...base.printer, ...(cur.settings?.fiscal?.printer || {}) },
+          demoNonFiscale: !!cur.settings?.fiscal?.demoNonFiscale,
+        };
+        reg.locali[idx] = {
+          ...cur,
+          settings: { ...cur.settings, fiscal },
+        };
+        try {
+          writeRegistry(reg);
+        } catch {
+          memoryLocali = reg.locali.slice();
+        }
+      }
+    }
+    if (!memoryLocali) {
+      memoryLocali = reg.locali.slice();
+    }
   }
   // Always guarantee Teste Matte in the returned list for this session
   const list = sortedLocali();

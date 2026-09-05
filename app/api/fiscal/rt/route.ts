@@ -50,6 +50,40 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // 3i XonXoff / A8010V: raw TCP reachability (porta tipica 1723).
+    if (mode === "tcp_probe") {
+      const net = await import("net");
+      const ok = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        const socket = net.createConnection({ host, port }, () => {
+          socket.end();
+          resolve({ ok: true });
+        });
+        socket.setTimeout(timeoutMs);
+        socket.on("timeout", () => {
+          socket.destroy();
+          resolve({ ok: false, error: `Timeout TCP ${host}:${port}` });
+        });
+        socket.on("error", (e: Error) => {
+          resolve({ ok: false, error: e.message || `TCP error ${host}:${port}` });
+        });
+      });
+      if (!ok.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Probe TCP fallito (${host}:${port}): ${ok.error}. Su Vercel la LAN non è raggiungibile — self-host in sede.`,
+          },
+          { status: 502 }
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        protocollo: `TCP-OK-${host}:${port}`,
+        note: "TCP reachable. Protocollo XonXoff richiede bridge per emissione scontrino.",
+      });
+    }
+
     if (!xml) {
       return NextResponse.json({ ok: false, error: "Body XML/payload mancante" }, { status: 400 });
     }

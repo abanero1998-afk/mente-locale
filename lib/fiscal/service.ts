@@ -4,6 +4,7 @@
  */
 
 import { emitEpsonScontrino, type FiscalDoc } from "./epson-fpmate";
+import { emit3iXonxoffScontrino } from "./xonxoff-3i";
 import type {
   FiscalBundle,
   FiscalPagamento,
@@ -105,6 +106,10 @@ export async function emitScontrinoFiscale(input: EmitScontrinoInput): Promise<F
 
   if (input.rt.vendor === "custom_http") {
     return emitCustomHttp(doc, input.rt);
+  }
+
+  if (input.rt.vendor === "3i_xonxoff") {
+    return emit3iXonxoffScontrino(doc, input.rt);
   }
 
   // epson_fpmate (default)

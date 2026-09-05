@@ -69,7 +69,7 @@ export function FiscalSettingsPanel() {
         </span>
       </div>
       <p className="text-[10px] text-white/35">
-        Software layer verso Registratore Telematico in LAN (Epson FpMate). Non è certificazione fiscale.
+        Software layer verso Registratore Telematico in LAN (Epson FpMate / 3i XonXoff). Non è certificazione fiscale.
       </p>
 
       <p className="text-[10px] text-white/50 font-black pt-1">DATI FISCALE</p>
@@ -151,7 +151,10 @@ export function FiscalSettingsPanel() {
         </div>
       </div>
 
-      <p className="text-[10px] text-white/50 font-black pt-2">RT EPSON (FpMate CGI)</p>
+      <p className="text-[10px] text-white/50 font-black pt-2">REGISTRATORE TELEMATICO</p>
+      {fiscal.rt.hardwareModel && (
+        <p className="text-[10px] text-white/35">Hardware: {fiscal.rt.hardwareModel}</p>
+      )}
       <label className="flex items-center gap-2 text-[11px] text-white/70">
         <input
           type="checkbox"
@@ -164,10 +167,22 @@ export function FiscalSettingsPanel() {
         <label className="text-[9px] text-white/40">Vendor</label>
         <select
           value={fiscal.rt.vendor}
-          onChange={(e) => fiscal.setRt({ vendor: e.target.value as RtVendor })}
+          onChange={(e) => {
+            const vendor = e.target.value as RtVendor;
+            if (vendor === "3i_xonxoff") {
+              fiscal.setRt({
+                vendor,
+                port: fiscal.rt.port === 80 || fiscal.rt.port === 443 ? 1723 : fiscal.rt.port || 1723,
+                hardwareModel: fiscal.rt.hardwareModel || "A8010V",
+              });
+            } else {
+              fiscal.setRt({ vendor });
+            }
+          }}
           className="w-full mt-1 p-3 rounded-xl bg-black/40 text-sm"
         >
           <option value="epson_fpmate">Epson FpMate</option>
+          <option value="3i_xonxoff">3i XonXoff (A8010V / TCP 1723)</option>
           <option value="custom_http">Custom HTTP</option>
           <option value="demo">Demo (non fiscale)</option>
         </select>
@@ -179,7 +194,7 @@ export function FiscalSettingsPanel() {
             value={fiscal.rt.host}
             onChange={(e) => fiscal.setRt({ host: e.target.value.trim() })}
             className="w-full mt-1 p-3 rounded-xl bg-black/40 text-sm"
-            placeholder="192.168.1.50"
+            placeholder={fiscal.rt.vendor === "3i_xonxoff" ? "192.168.1.60" : "192.168.1.50"}
           />
         </div>
         <div>
@@ -285,8 +300,8 @@ export function FiscalSettingsPanel() {
         <p className="text-[10px] font-black text-white/50">CHECKLIST INSTALLAZIONE LOCALE</p>
         <ol className="text-[10px] text-white/55 list-decimal pl-4 space-y-1">
           <li>Collega il Registratore Telematico alla rete Wi‑Fi/LAN del locale</li>
-          <li>Assegna IP fisso al RT (es. 192.168.1.50)</li>
-          <li>Verifica che FpMate CGI sia attivo (/cgi-bin/fpmate.cgi)</li>
+          <li>Assegna IP fisso al RT (es. 192.168.1.60 per Teste Matte A8010V)</li>
+          <li>Epson: FpMate CGI (/cgi-bin/fpmate.cgi). 3i XonXoff: TCP porta 1723</li>
           <li>Inserisci IP/porta qui e premi Test connessione</li>
           <li>Esegui il primo scontrino di prova su un tavolo</li>
         </ol>
