@@ -1,7 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { scopedStorage } from "./scoped-storage";
 import type {
   ArticoloMagazzino,
   AvvisoSocio,
@@ -21,7 +22,7 @@ import type {
 } from "./types";
 import { codaAll, codaClear, codaPut } from "./idb-queue";
 import { useAuth } from "./auth";
-import { deviceId, getDeviceNick, handlePresenceEvent, listenLocal, listenRemote, publishLocal, publishRemote, startPresenceHeartbeat, supabaseConfigured } from "./sync";
+import { deviceId, getDeviceNick, handlePresenceEvent, listenLocal, listenRemote, publishLocal, publishRemote, setRemoteEventHandler, startPresenceHeartbeat, supabaseConfigured } from "./sync";
 
 function makeTavoli(): Tavolo[] {
   return Array.from({ length: 20 }, (_, i) => ({
@@ -155,6 +156,54 @@ async function pushEvent(ev: SyncEvent, job: JobOffline, set: (fn: (s: Store) =>
       set((s) => ({ codaOffline: [...s.codaOffline, job] }));
     }
   }
+}
+
+
+export function menteStoreDefaults(): Omit<
+  Store,
+  | "setOnline"
+  | "applicaEvento"
+  | "pulse"
+  | "aggiungiOrdine"
+  | "setOrdineStato"
+  | "chiudiTavolo"
+  | "aggiungiProdotto"
+  | "eliminaProdotto"
+  | "confermaPrenotazione"
+  | "creaLotto"
+  | "updateLotto"
+  | "deleteLotto"
+  | "addMag"
+  | "updateMag"
+  | "deleteMag"
+  | "addFrigo"
+  | "updateFrigo"
+  | "deleteFrigo"
+  | "salvaTemp"
+  | "confermaTemp"
+  | "addPulizia"
+  | "togglePulizia"
+  | "deletePulizia"
+  | "setPrinter"
+  | "pushAvviso"
+  | "syncCoda"
+> {
+  return {
+    tavoli: makeTavoli(),
+    menu: MENU_SEED.map((p) => ({ ...p })),
+    magazzino: MAG_SEED.map((m) => ({ ...m })),
+    frighi: FRIGO_SEED.map((f) => ({ ...f })),
+    lotti: LOTTI_SEED.map((l) => ({ ...l, giorni_rimasti: giorniRimasti(l.scadenza) })),
+    logTemp: [],
+    pulizie: PULIZIA_SEED.map((p) => ({ ...p })),
+    printer: { ...PRINTER_SEED },
+    prenotazioni: [{ id: "p1", initials: "MR", nome: "Mario Rossi", persone: 4, tavolo: "T03", quando: "Oggi 20:30", stato: "confermata", fonte: "telefono" }],
+    scontrini: [],
+    avvisi: [],
+    codaOffline: [],
+    online: typeof navigator === "undefined" ? true : navigator.onLine,
+    hydrated: false,
+  };
 }
 
 export const useMenteStore = create<Store>()(
@@ -302,7 +351,10 @@ export const useMenteStore = create<Store>()(
         set({ codaOffline: left });
       },
     }),
-    { name: "mente-locale-v7" }
+    {
+      name: "mente-locale-v8",
+      storage: createJSONStorage(() => scopedStorage),
+    }
   )
 );
 
@@ -311,8 +363,10 @@ export function wireSync() { /* presence wired §6 */
   if (wired || typeof window === "undefined") return;
   wired = true;
   useMenteStore.setState({ online: navigator.onLine, hydrated: true });
-  listenLocal((e) => useMenteStore.getState().applicaEvento(e));
-  void listenRemote((e) => useMenteStore.getState().applicaEvento(e));
+  const handler = (e: import("./types").SyncEvent) => useMenteStore.getState().applicaEvento(e);
+  listenLocal(handler);
+  setRemoteEventHandler(handler);
+  void listenRemote(handler);
   window.addEventListener("online", () => {
     useMenteStore.setState({ online: true });
     void useMenteStore.getState().syncCoda();
