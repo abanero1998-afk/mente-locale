@@ -5,6 +5,7 @@ import { useMenteStore, wireSync } from "@/lib/store";
 import { useLocaleStore } from "@/lib/locale-store";
 import { canFullApp, useAuth } from "@/lib/auth";
 import { useCassa, type Pagamento } from "@/lib/cassa";
+import { kpiOggi, orariPunta, topProdotti } from "@/lib/dashboard-stats";
 import { apriStampa, ticketHtml } from "@/lib/ticket";
 import { SEZIONI_MENU, type Piatto, type Reparto, type RigaComanda, type Tavolo } from "@/lib/types";
 import { MenuTab, ProductThumb } from "./menu-tab";
@@ -123,6 +124,7 @@ export default function App() {
   const tavoli = useMenteStore((s) => s.tavoli);
   const menu = useMenteStore((s) => s.menu);
   const online = useMenteStore((s) => s.online);
+  const scontriniCassa = useCassa((s) => s.scontrini);
   const [salaId, setSalaId] = useState("sala-int");
   const [editMap, setEditMap] = useState(false);
   const [selezionato, setSelezionato] = useState<Tavolo | null>(null);
@@ -212,6 +214,12 @@ export default function App() {
     setComanda([]);
   };
 
+  const top = topProdotti(scontriniCassa, 8);
+  const ore = orariPunta(scontriniCassa);
+  const kpi = kpiOggi(scontriniCassa);
+  const maxOre = ore.reduce((m, o) => (o.count > m ? o.count : m), 0) || 1;
+  const maxTop = top.reduce((m, t) => (t.qta > m ? t.qta : m), 0) || 1;
+
   return (
     <div className="min-h-screen bg-[#050507] text-white relative overflow-hidden select-none">
       <style>{`.glass{backdrop-filter:blur(40px);background:rgba(255,255,255,.03);border:.5px solid rgba(255,26,26,.08)}.glass-strong{backdrop-filter:blur(60px);background:rgba(0,0,0,.62);border:.5px solid rgba(255,26,26,.12)}.nav-pill{background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(8,8,8,.55));border:1px solid rgba(255,70,70,.28)}`}</style>
@@ -239,7 +247,18 @@ export default function App() {
             )}
             <div className="relative w-full h-[58vh] min-h-[360px] rounded-[32px] glass-strong overflow-hidden">
               {visibili.map((t) => (
-                <button key={t.id} onClick={() => { if (editMap) useLocaleStore.getState().deleteTavolo(t.id); else { setSelezionato(t); setComanda([]); } }} style={{ left: `${t.x}%`, top: `${t.y}%` }} className="absolute -translate-x-1/2 -translate-y-1/2 w-[68px] h-[68px] rounded-full glass flex items-center justify-center">
+                <button
+                  key={t.id}
+                  onClick={() => { if (editMap) useLocaleStore.getState().deleteTavolo(t.id); else { setSelezionato(t); setComanda([]); } }}
+                  style={{ left: `${t.x}%`, top: `${t.y}%` }}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 w-[68px] h-[68px] rounded-full glass flex items-center justify-center ${
+                    t.stato === "occupato" || t.stato === "conto"
+                      ? "ring-2 ring-[#FF1A1A] border border-[#FF1A1A]"
+                      : t.stato === "prenotato"
+                        ? "ring-2 ring-amber-400/70 border border-amber-400/50"
+                        : ""
+                  }`}
+                >
                   <span className="text-[11px] font-black">{t.nome}</span>
                 </button>
               ))}
@@ -247,9 +266,78 @@ export default function App() {
           </div>
         )}
         {tab === "dashboard" && (
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => setTab("cassa")} className="rounded-2xl glass p-3 text-left"><p className="text-[9px] text-white/40">CASSA</p><p className="text-xl font-black">apri</p></button>
-            <button onClick={() => setTab("haccp")} className="rounded-2xl glass p-3 text-left"><p className="text-[9px] text-white/40">HACCP</p><p className="text-xl font-black">registro</p></button>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setTab("cassa")} className="rounded-2xl glass p-3 text-left">
+                <p className="text-[9px] text-white/40">CASSA</p>
+                <p className="text-xl font-black">apri</p>
+              </button>
+              <button onClick={() => setTab("haccp")} className="rounded-2xl glass p-3 text-left">
+                <p className="text-[9px] text-white/40">HACCP</p>
+                <p className="text-xl font-black">registro</p>
+              </button>
+            </div>
+
+            {kpi.nScontrini > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-2xl glass p-3">
+                  <p className="text-[9px] text-white/40">TOTALE OGGI</p>
+                  <p className="text-lg font-black">€{kpi.totale.toFixed(2)}</p>
+                </div>
+                <div className="rounded-2xl glass p-3">
+                  <p className="text-[9px] text-white/40">SCONTRINI</p>
+                  <p className="text-lg font-black">{kpi.nScontrini}</p>
+                </div>
+                <div className="rounded-2xl glass p-3">
+                  <p className="text-[9px] text-white/40">COPERTI</p>
+                  <p className="text-lg font-black">{kpi.coperti}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-[24px] glass p-4">
+              <p className="text-[10px] tracking-widest text-white/45 font-black mb-3">PRODOTTI PIÙ VENDUTI</p>
+              {top.length === 0 ? (
+                <p className="text-sm text-white/45">Nessuna vendita ancora — chiudi un tavolo con PAGA E CHIUDI</p>
+              ) : (
+                <div className="space-y-2">
+                  {top.map((row) => (
+                    <div key={row.nome} className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between gap-2 mb-1">
+                          <p className="text-sm font-bold truncate">{row.nome}</p>
+                          <p className="text-[11px] font-black text-[#FF1A1A]">×{row.qta}</p>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                          <div className="h-full rounded-full bg-[#FF1A1A]" style={{ width: `${Math.max(8, (row.qta / maxTop) * 100)}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-[24px] glass p-4">
+              <p className="text-[10px] tracking-widest text-white/45 font-black mb-3">ORARI DI PUNTA</p>
+              {ore.length === 0 ? (
+                <p className="text-sm text-white/45">Nessun orario ancora — i dati arrivano dagli scontrini chiusi in cassa.</p>
+              ) : (
+                <div className="space-y-2">
+                  {ore.map((o) => (
+                    <div key={o.ora} className="flex items-center gap-3">
+                      <p className="w-12 text-[11px] font-black text-white/70">{o.label}</p>
+                      <div className="flex-1">
+                        <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                          <div className="h-full rounded-full bg-white/70" style={{ width: `${Math.max(6, (o.count / maxOre) * 100)}%` }} />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-white/50 w-[88px] text-right">{o.count} · €{o.totale.toFixed(0)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
         {tab === "menu" && <MenuTab onAdd={() => {}} />}
