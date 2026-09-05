@@ -23,6 +23,7 @@ import type {
 } from "./types";
 import { codaAll, codaClear, codaPut } from "./idb-queue";
 import { useAuth } from "./auth";
+import { playKdsAlert } from "./sounds";
 import { deviceId, getDeviceNick, handlePresenceEvent, listenLocal, listenRemote, publishLocal, publishRemote, setRemoteEventHandler, startPresenceHeartbeat, supabaseConfigured } from "./sync";
 
 function makeTavoli(): Tavolo[] {
@@ -124,6 +125,8 @@ type Store = {
   updateLotto: (id: string, patch: Partial<Lotto>) => void;
   deleteLotto: (id: string) => void;
   addMag: (form: { nome: string; qta: string; unita: string; soglia: string }) => void;
+  aggiungiMagazzino: (form: { nome: string; qta: string; unita: string; soglia: string }) => void;
+  aggiornaMagazzino: (id: string, patch: Partial<ArticoloMagazzino>) => void;
   updateMag: (id: string, patch: Partial<ArticoloMagazzino>) => void;
   deleteMag: (id: string) => void;
   addFrigo: (form: { nome: string; temp: string; min: string; max: string }) => void;
@@ -176,6 +179,8 @@ export function menteStoreDefaults(): Omit<
   | "updateLotto"
   | "deleteLotto"
   | "addMag"
+  | "aggiungiMagazzino"
+  | "aggiornaMagazzino"
   | "updateMag"
   | "deleteMag"
   | "addFrigo"
@@ -244,6 +249,9 @@ export const useMenteStore = create<Store>()(
             ),
           }));
           get().pulse(e.tavoloId);
+          try {
+            if (e.deviceId !== deviceId) playKdsAlert(e.ordine.piatto.reparto);
+          } catch {}
         }
         if (e.kind === "stato_ordine") set((s) => ({ tavoli: s.tavoli.map((t) => ({ ...t, ordini: t.ordini.map((o) => (o.id === e.ordineId ? { ...o, stato: e.stato } : o)) })) }));
         if (e.kind === "chiudi_tavolo") set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === e.tavoloId ? { ...t, stato: "libero", ordini: [], animazione: "none" } : t)) }));
@@ -255,6 +263,7 @@ export const useMenteStore = create<Store>()(
         const ordine: Ordine = { id: `${Date.now()}-${piatto.id}-${Math.random().toString(36).slice(2, 6)}`, piatto, qta, note: note?.trim() || undefined, stato: "ordinato", ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) };
         set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === tavoloId ? { ...t, ordini: [...t.ordini, ordine], stato: "occupato", animazione: "pulse" } : t)) }));
         get().pulse(tavoloId);
+        try { playKdsAlert(piatto.reparto); } catch {}
         const ev: SyncEvent = { kind: "nuovo_ordine", tavoloId, ordine, deviceId };
         await pushEvent(ev, { id: ordine.id, tipo: "ordine", tavoloId, piatto, ordine, ts: Date.now() }, set);
         return ordine;
@@ -306,6 +315,8 @@ export const useMenteStore = create<Store>()(
       updateLotto: (id, patch) => set((s) => ({ lotti: s.lotti.map((l) => (l.id === id ? { ...l, ...patch, giorni_rimasti: giorniRimasti(patch.scadenza || l.scadenza) } : l)) })),
       deleteLotto: (id) => set((s) => ({ lotti: s.lotti.filter((l) => l.id !== id) })),
       addMag: (form) => set((s) => ({ magazzino: [...s.magazzino, { id: `m-${Date.now()}`, nome: form.nome || "Articolo", qta: Number(form.qta) || 0, unita: form.unita || "kg", soglia: Number(form.soglia) || 1 }] })),
+      aggiungiMagazzino: (form) => get().addMag(form),
+      aggiornaMagazzino: (id, patch) => get().updateMag(id, patch),
       updateMag: (id, patch) => set((s) => ({ magazzino: s.magazzino.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
       deleteMag: (id) => set((s) => ({ magazzino: s.magazzino.filter((m) => m.id !== id) })),
       addFrigo: (form) => set((s) => ({ frighi: [...s.frighi, { id: `f-${Date.now()}`, nome: form.nome || "Frigo", temp: Number(form.temp) || 0, min: Number(form.min) || 0, max: Number(form.max) || 4, lastCheck: 0 }] })),
