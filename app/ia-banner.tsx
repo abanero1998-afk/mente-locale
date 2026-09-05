@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMenteStore } from "@/lib/store";
-import { emitIaNav, replyIaChat, startIaLoop } from "@/lib/ia-socio";
+import {
+  confirmAzioni,
+  emitIaNav,
+  executeIaAzione,
+  replyIaChat,
+  startIaLoop,
+} from "@/lib/ia-socio";
+import { playUi } from "@/lib/sounds";
 import type { IaAzione, IaAzioneKind } from "@/lib/types";
 
 type ChatRow = {
@@ -30,10 +37,20 @@ function kindLabel(kind: IaAzioneKind) {
       return "Cassa";
     case "menu":
       return "Menu";
+    case "aggiungi_ordine_tavolo":
+      return "Aggiungi ordine";
+    case "aggiungi_magazzino":
+      return "Aggiungi magazzino";
+    case "conferma_si":
+      return "Conferma";
+    case "conferma_no":
+      return "Annulla";
     default:
       return kind;
   }
 }
+
+const NAV_KINDS: IaAzioneKind[] = ["magazzino", "haccp", "kds", "prenotazioni", "tavolo", "cassa", "menu"];
 
 export default function IaBanner() {
   const avvisi = useMenteStore((s) => s.avvisi);
@@ -74,20 +91,53 @@ export default function IaBanner() {
   }, [open, messages.length]);
 
   useEffect(() => {
-    // badge pulse when new avviso arrives while closed
     for (const a of avvisi) {
       if (!seenIds.current[a.id]) seenIds.current[a.id] = true;
     }
   }, [avvisi]);
 
-  const onAction = (a: IaAzione) => {
-    emitIaNav(a.kind);
-    setOpen(false);
+  const pushBot = (text: string, azioni?: IaAzione[]) => {
+    setExtra((rows) => [
+      ...rows,
+      {
+        id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        role: "bot",
+        text,
+        ts: Date.now() + 1,
+        azioni,
+      },
+    ]);
+  };
+
+  const onAction = async (a: IaAzione) => {
+    playUi("tap");
+    if (NAV_KINDS.indexOf(a.kind) >= 0) {
+      emitIaNav(a.kind);
+      setOpen(false);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await executeIaAzione(a);
+      if (res.navigated) {
+        setOpen(false);
+        return;
+      }
+      if (a.kind === "aggiungi_ordine_tavolo" || a.kind === "aggiungi_magazzino") {
+        pushBot(res.msg, confirmAzioni());
+      } else {
+        pushBot(res.msg);
+        if (a.kind === "conferma_si") playUi("success");
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const send = async () => {
     const text = input.trim();
     if (!text || busy) return;
+    playUi("tap");
     setInput("");
     const userRow: ChatRow = {
       id: `u-${Date.now()}`,
@@ -121,12 +171,14 @@ export default function IaBanner() {
         .ml-ia-glass-strong{backdrop-filter:blur(60px);background:rgba(8,8,12,.88);border:.5px solid rgba(255,26,26,.18)}
       `}</style>
 
-      {/* Floating bubble — sopra la nav (~bottom-24) */}
       {!open && (
         <button
           type="button"
           aria-label="Apri IA Socio"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            playUi("nav");
+            setOpen(true);
+          }}
           className="fixed right-4 z-[60] w-14 h-14 rounded-full ml-ia-glass-strong shadow-lg flex items-center justify-center border border-[#FF1A1A]/40"
           style={{ bottom: "5.5rem" }}
         >
@@ -149,7 +201,10 @@ export default function IaBanner() {
               </div>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  playUi("tap");
+                  setOpen(false);
+                }}
                 className="text-white/50 text-xs font-bold px-3 py-1 rounded-full ml-ia-glass"
               >
                 Chiudi
@@ -159,7 +214,7 @@ export default function IaBanner() {
             <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-2 min-h-[220px]">
               {messages.length === 0 && (
                 <p className="text-[12px] text-white/40 text-center py-8">
-                  Nessun avviso. Chiedi: «come va la cassa?», «frighi?», «cosa fare ora?»
+                  Nessun avviso. Prova: «metti 2 carbonara al tavolo 3», «frighi?», «cosa fare ora?»
                 </p>
               )}
               {messages.map((m) => (
@@ -183,8 +238,9 @@ export default function IaBanner() {
                         <button
                           key={a.id}
                           type="button"
-                          onClick={() => onAction(a)}
-                          className="px-2.5 py-1 rounded-full text-[10px] font-black bg-white text-black"
+                          disabled={busy}
+                          onClick={() => void onAction(a)}
+                          className="px-2.5 py-1 rounded-full text-[10px] font-black bg-white text-black disabled:opacity-40"
                         >
                           {a.label || kindLabel(a.kind)}
                         </button>
