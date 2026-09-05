@@ -74,18 +74,14 @@ export const useAuth = create<AuthState>()(
       },
       login: (localeId, pin) => {
         const raw = (localeId || "").trim();
-        const id = raw.toLowerCase().replace(/\s+/g, "");
-        if (!id && !raw) {
+        if (!raw) {
           set({ errore: "Seleziona o inserisci un locale", sessione: null });
           return false;
         }
-        let loc = resolveLocale(id) || getLocale(id);
-        if (!loc && raw) {
-          loc = resolveLocale(raw) || getLocale(raw);
-        }
+        const loc = resolveLocale(raw);
         if (!loc) {
           set({
-            errore: "Locale non trovato. Seleziona Teste Matte dalla lista o scrivi testematte",
+            errore: "Locale non trovato. Tocca Entra in Teste Matte oppure scrivi testematte",
             sessione: null,
           });
           return false;
