@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { listLocali, useAuth } from "@/lib/auth";
-import { DEMO_STAFF_PINS, ensureSeededLocali } from "@/lib/tenants";
+import { DEMO_STAFF_PINS, ensureSeededLocali, getLocale } from "@/lib/tenants";
 import { playUi } from "@/lib/sounds";
 
 type Tab = "entra" | "crea";
@@ -19,6 +19,11 @@ export function LoginScreen() {
   useEffect(() => {
     ensureSeededLocali();
     setSeedTick((n) => n + 1);
+    // Preselect Teste Matte when empty so one-tap / PIN-only login works
+    setLocaleId((cur) => {
+      if (cur) return cur;
+      return getLocale("testematte") ? "testematte" : cur;
+    });
   }, []);
   const locali = useMemo(() => listLocali(), [tab, lastPins, seedTick]);
 
@@ -93,10 +98,26 @@ export function LoginScreen() {
                 ))}
               </div>
             )}
+            {getLocale("testematte") && (
+              <button
+                type="button"
+                onClick={() => {
+                  playUi("nav");
+                  setLocaleId("testematte");
+                  if (pin.trim()) {
+                    playUi("success");
+                    useAuth.getState().login("testematte", pin);
+                  }
+                }}
+                className="w-full py-3 rounded-full bg-white/10 border border-[#FF1A1A]/40 text-[#FF1A1A] font-black text-sm"
+              >
+                Entra in Teste Matte
+              </button>
+            )}
             <input
               value={localeId}
               onChange={(e) => setLocaleId(e.target.value)}
-              placeholder="ID locale (o seleziona sopra)"
+              placeholder="ID o nome (es. Teste Matte / testematte)"
               className="w-full p-4 rounded-2xl bg-white/5 border border-white/10"
             />
             <input
