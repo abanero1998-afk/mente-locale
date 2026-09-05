@@ -27,6 +27,12 @@ export const SEZIONI_MENU = [
   "Dolci",
   "Bevande",
   "Vini",
+  "Tacos",
+  "Toastamatti",
+  "Fritti",
+  "Pinse",
+  "Panini",
+  "Desserts",
 ] as const;
 
 export type SezioneMenu = (typeof SEZIONI_MENU)[number];
@@ -39,6 +45,8 @@ export type Piatto = {
   categoria: string;
   /** URL immagine prodotto (non emoji). */
   img: string;
+  /** Descrizione breve (ingredienti / note). */
+  descrizione?: string;
 };
 
 export type Ordine = {
