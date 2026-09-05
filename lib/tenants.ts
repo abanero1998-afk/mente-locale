@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  TESTEMATTE_LOCALE_ID,
+  TESTEMATTE_NOME,
+  TESTEMATTE_PIN,
+} from "./locale-seeds/testematte";
+
 export type LocaleSettings = {
   fondoIniziale?: number;
   waSocio?: string;
@@ -72,11 +78,49 @@ function uniqueId(nome: string): string {
   return `${base}${n}`;
 }
 
-export function listLocali(): LocaleTenant[] {
+
+function sortedLocali(): LocaleTenant[] {
   return readRegistry().locali.slice().sort((a, b) => a.nome.localeCompare(b.nome, "it"));
 }
 
+/** Seed built-in demo locali (Teste Matte) so they appear in login without manual create. */
+export function ensureSeededLocali(): LocaleTenant[] {
+  if (typeof localStorage === "undefined") return [];
+  const reg = readRegistry();
+  if (!reg.locali.some((l) => l.id === TESTEMATTE_LOCALE_ID)) {
+    const id = TESTEMATTE_LOCALE_ID;
+    const pinTitolare = TESTEMATTE_PIN;
+    // Cameriere uses 3333 so PIN 0000 uniquely maps to titolare for this locale.
+    const staff: TenantStaff[] = [
+      { id: `s-tit-${id}`, nome: "Titolare", pin: pinTitolare, ruolo: "titolare" },
+      { id: `s-cameriere-${id}`, nome: "Cameriere", pin: "3333", ruolo: "cameriere" },
+      { id: `s-cucina-${id}`, nome: "Cucina", pin: "1111", ruolo: "cucina" },
+      { id: `s-bar-${id}`, nome: "Bar", pin: "2222", ruolo: "bar" },
+    ];
+    reg.locali.push({
+      id,
+      nome: TESTEMATTE_NOME,
+      createdAt: Date.now(),
+      pinTitolare,
+      settings: {
+        fondoIniziale: 150,
+        nomeBrand: TESTEMATTE_NOME,
+        waSocio: "",
+      },
+      staff,
+    });
+    writeRegistry(reg);
+  }
+  return sortedLocali();
+}
+
+export function listLocali(): LocaleTenant[] {
+  ensureSeededLocali();
+  return sortedLocali();
+}
+
 export function getLocale(id: string): LocaleTenant | undefined {
+  ensureSeededLocali();
   const lid = (id || "").trim().toLowerCase();
   return readRegistry().locali.find((l) => l.id === lid);
 }
