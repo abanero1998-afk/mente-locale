@@ -1,7 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { scopedStorage } from "./scoped-storage";
 
 export type Pagamento = "contanti" | "carta" | "satispay" | "misto";
 
@@ -156,7 +157,10 @@ export const useCassa = create<CassaState>()(
         return chiusura;
       },
     }),
-    { name: "ml-cassa-v2" }
+    {
+      name: "ml-cassa-v3",
+      storage: createJSONStorage(() => scopedStorage),
+    }
   )
 );
 
