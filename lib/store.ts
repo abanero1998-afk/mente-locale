@@ -300,7 +300,7 @@ export const useMenteStore = create<Store>()(
         set({ codaOffline: left });
       },
     }),
-    { name: "mente-locale-v6" }
+    { name: "mente-locale-v7" }
   )
 );
 
