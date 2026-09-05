@@ -18,12 +18,25 @@ export type HaccpView =
   | "stampante"
   | "asl";
 
+/** Sezioni menu operative (ordine UI). */
+export const SEZIONI_MENU = [
+  "Primi",
+  "Secondi",
+  "Contorni",
+  "Dolci",
+  "Bevande",
+  "Vini",
+] as const;
+
+export type SezioneMenu = (typeof SEZIONI_MENU)[number];
+
 export type Piatto = {
   id: string;
   nome: string;
   prezzo: number;
   reparto: Reparto;
   categoria: string;
+  /** URL immagine prodotto (non emoji). */
   img: string;
 };
 
