@@ -29,6 +29,11 @@ export type RtConfig = {
   useHttps: boolean;
   /** Es. A8010V — solo metadato installazione. */
   hardwareModel?: string;
+  /**
+   * HTTP del PC bridge in LAN (tools/rt-bridge-3i), es. http://192.168.1.2:8787.
+   * NON e l IP del RT. Vuoto = bridge non configurato (obbligatorio su Vercel per 3i).
+   */
+  bridgeUrl?: string;
 };
 
 export type PosProvider = "manual" | "sumup" | "nexi" | "stripe_terminal";
@@ -59,6 +64,8 @@ export type FiscalRiga = {
   qta: number;
   prezzo: number;
   aliquota?: AliquotaIva;
+  /** Reparto RT 3i (default 1). */
+  reparto?: number;
   note?: string;
 };
 
@@ -106,6 +113,7 @@ export function defaultFiscalBundle(): FiscalBundle {
       timeoutMs: 10000,
       useHttps: false,
       hardwareModel: undefined,
+      bridgeUrl: "",
     },
     pos: {
       enabled: false,
