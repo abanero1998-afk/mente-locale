@@ -10,6 +10,7 @@ export type HaccpView =
   | "fornitori"
   | "pulizia"
   | "scadenze"
+  | "magazzino"
   | "frighi"
   | "olio"
   | "tracciabilita"
@@ -185,12 +186,28 @@ export type IaAzioneKind =
   | "prenotazioni"
   | "tavolo"
   | "cassa"
-  | "menu";
+  | "menu"
+  | "aggiungi_ordine_tavolo"
+  | "aggiungi_magazzino"
+  | "conferma_si"
+  | "conferma_no";
+
+export type IaAzioneParams = {
+  tavoloId?: number;
+  tavoloNome?: string;
+  piattoId?: string;
+  piattoNome?: string;
+  qta?: number;
+  nome?: string;
+  unita?: string;
+  soglia?: number;
+};
 
 export type IaAzione = {
   id: string;
   label: string;
   kind: IaAzioneKind;
+  params?: IaAzioneParams;
 };
 
 export type AvvisoSocio = {
