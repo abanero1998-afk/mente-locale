@@ -20,7 +20,8 @@ import type {
   Tavolo,
 } from "./types";
 import { codaAll, codaClear, codaPut } from "./idb-queue";
-import { deviceId, listenLocal, listenRemote, publishLocal, publishRemote, supabaseConfigured } from "./sync";
+import { useAuth } from "./auth";
+import { deviceId, getDeviceNick, handlePresenceEvent, listenLocal, listenRemote, publishLocal, publishRemote, startPresenceHeartbeat, supabaseConfigured } from "./sync";
 
 function makeTavoli(): Tavolo[] {
   return Array.from({ length: 20 }, (_, i) => ({
@@ -179,6 +180,11 @@ export const useMenteStore = create<Store>()(
         setTimeout(() => set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === id ? { ...t, animazione: "none" } : t)) })), 2000);
       },
       applicaEvento: (e) => {
+        if (e.kind === "presence") {
+          handlePresenceEvent(e);
+          return;
+        }
+        if (e.kind === "sync_ping") return;
         if (e.kind === "nuovo_ordine") {
           set((s) => ({
             tavoli: s.tavoli.map((t) =>
@@ -315,4 +321,11 @@ export function wireSync() {
   setInterval(() => {
     if (navigator.onLine && useMenteStore.getState().codaOffline.length) void useMenteStore.getState().syncCoda();
   }, 5000);
+  startPresenceHeartbeat(() => {
+    const sess = useAuth.getState().sessione;
+    return {
+      nome: getDeviceNick() !== "Questo device" ? getDeviceNick() : (sess?.staffNome || getDeviceNick()),
+      ruolo: sess?.ruolo || "",
+    };
+  });
 }
