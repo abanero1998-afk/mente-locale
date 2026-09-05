@@ -6,7 +6,8 @@ import { getCurrentLocaleId } from "./scoped-storage";
 import { getLocale } from "./tenants";
 import { useCassa, cassaDayKey, scontrinoAttivo, type ScontrinoCassa } from "./cassa";
 import { kpiOggi } from "./dashboard-stats";
-import type { IaAzione, IaAzioneKind } from "./types";
+import type { IaAzione, IaAzioneKind, IaAzioneParams, Piatto } from "./types";
+import { playIaAlarm } from "./sounds";
 
 function waSocioTo() {
   const loc = getLocale(getCurrentLocaleId());
@@ -75,21 +76,7 @@ function isServiceHours(d = new Date()): boolean {
 }
 
 function playIaSound(urgente: boolean) {
-  const audio = new Audio(urgente ? "/sounds/alarm.wav" : "/sounds/ding-pronto.wav");
-  audio.volume = 0.6;
-  audio.play().catch(() => {
-    try {
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = urgente ? 420 : 880;
-      gain.gain.value = 0.09;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + (urgente ? 0.35 : 0.18));
-    } catch {}
-  });
+  playIaAlarm(urgente);
 }
 
 async function notifyPush(msg: string) {
@@ -110,8 +97,8 @@ export function emitIaNav(kind: IaAzioneKind) {
   window.dispatchEvent(new CustomEvent("ml-ia-nav", { detail: { kind } }));
 }
 
-function azione(id: string, label: string, kind: IaAzioneKind): IaAzione {
-  return { id, label, kind };
+function azione(id: string, label: string, kind: IaAzioneKind, params?: IaAzioneParams): IaAzione {
+  return params ? { id, label, kind, params } : { id, label, kind };
 }
 
 export async function avvisaSocio(
@@ -457,6 +444,19 @@ export async function replyIaChat(userText: string): Promise<{ msg: string; azio
   const q = (userText || "").trim().toLowerCase();
   if (!q) return { msg: "Scrivi una domanda, es. «come va la cassa?» o «frighi?»." };
 
+  const operative = tryParseOperativeChat(userText);
+  if (operative) return operative;
+
+  // conferma sì/no se pending
+  if (pendingExec && /^(si|sì|ok|confermo|yes)\b/.test(q)) {
+    const res = await executeIaAzione({ id: "chat-si", label: "Sì", kind: "conferma_si" });
+    return { msg: res.msg };
+  }
+  if (pendingExec && /^(no|annulla)\b/.test(q)) {
+    const res = await executeIaAzione({ id: "chat-no", label: "No", kind: "conferma_no" });
+    return { msg: res.msg };
+  }
+
   const local = answerLocalRules(q);
 
   const apiKey =
@@ -614,10 +614,229 @@ function answerLocalRules(q: string): { msg: string; azioni?: IaAzione[] } {
   return {
     msg:
       "Posso rispondere su: cassa, frighi, magazzino, tavoli, prenotazioni, KDS, pulizie, «cosa fare ora».\n" +
+      "Posso anche: «metti 2 carbonara al tavolo 3», «aggiungi mozzarella al magazzino qta 10».\n" +
       `Ora: ${issues.length} criticità aperte` +
       (kpi.nScontrini ? `, incasso oggi €${kpi.totale.toFixed(2)}` : ", nessun scontrino oggi."),
     azioni: issues[0]?.azioni?.slice(0, 2),
   };
+}
+
+
+type PendingExec = {
+  summary: string;
+  kind: "aggiungi_ordine_tavolo" | "aggiungi_magazzino";
+  params: IaAzioneParams;
+};
+
+let pendingExec: PendingExec | null = null;
+
+function fuzzyPiatto(nome: string): Piatto | null {
+  const n = (nome || "").toLowerCase().trim();
+  if (!n) return null;
+  const menu = useMenteStore.getState().menu;
+  let best: Piatto | null = null;
+  let bestScore = 0;
+  for (const p of menu) {
+    const pn = p.nome.toLowerCase();
+    if (pn === n) return p;
+    if (pn.includes(n) || n.includes(pn)) {
+      const score = Math.min(pn.length, n.length) / Math.max(pn.length, n.length);
+      if (score > bestScore) {
+        bestScore = score;
+        best = p;
+      }
+    } else {
+      // token overlap
+      const nt = n.split(/\s+/);
+      const pt = pn.split(/\s+/);
+      const hit = nt.filter((x) => pt.some((y) => y.startsWith(x) || x.startsWith(y))).length;
+      const score = hit / Math.max(nt.length, pt.length);
+      if (score > bestScore && score >= 0.5) {
+        bestScore = score;
+        best = p;
+      }
+    }
+  }
+  return bestScore >= 0.45 ? best : null;
+}
+
+function resolveTavolo(raw: string | number | undefined) {
+  const { tavoli } = useMenteStore.getState();
+  if (raw == null || raw === "") return null;
+  if (typeof raw === "number") return tavoli.find((t) => t.id === raw) || null;
+  const s = String(raw).trim().toLowerCase();
+  const byNome = tavoli.find((t) => t.nome.toLowerCase() === s || t.nome.toLowerCase() === `t${s.padStart(2, "0")}`);
+  if (byNome) return byNome;
+  const m = /(?:t)?0*(\d+)/i.exec(s);
+  if (m) {
+    const id = Number(m[1]);
+    return tavoli.find((t) => t.id === id || t.nome.toLowerCase() === `t${String(id).padStart(2, "0")}`) || null;
+  }
+  return null;
+}
+
+async function runAggiungiOrdine(params: IaAzioneParams): Promise<string> {
+  const tav = resolveTavolo(params.tavoloId ?? params.tavoloNome);
+  if (!tav) return "Tavolo non trovato.";
+  let piatto: Piatto | null = null;
+  if (params.piattoId) {
+    piatto = useMenteStore.getState().menu.find((x) => x.id === params.piattoId) || null;
+  }
+  if (!piatto && params.piattoNome) piatto = fuzzyPiatto(params.piattoNome);
+  if (!piatto) return `Piatto non trovato nel menu: ${params.piattoNome || params.piattoId || "?"}.`;
+  const qta = Math.max(1, Number(params.qta) || 1);
+  await useMenteStore.getState().aggiungiOrdine(tav.id, piatto, qta);
+  return `✅ Aggiunto ${piatto.nome} x${qta} su ${tav.nome}.`;
+}
+
+function runAggiungiMagazzino(params: IaAzioneParams): string {
+  const nome = (params.nome || params.piattoNome || "").trim();
+  if (!nome) return "Nome articolo mancante.";
+  const qta = Number(params.qta);
+  const form = {
+    nome,
+    qta: String(Number.isFinite(qta) ? qta : 0),
+    unita: (params.unita || "kg").trim() || "kg",
+    soglia: String(params.soglia != null ? params.soglia : 1),
+  };
+  useMenteStore.getState().aggiungiMagazzino(form);
+  return `✅ Magazzino: aggiunto ${form.nome} qta ${form.qta} ${form.unita} (soglia ${form.soglia}).`;
+}
+
+/** Esegue azione IA (navigate / add / confirm). */
+export async function executeIaAzione(
+  a: IaAzione
+): Promise<{ msg: string; navigated?: boolean; done?: boolean }> {
+  const navKinds: IaAzioneKind[] = ["magazzino", "haccp", "kds", "prenotazioni", "tavolo", "cassa", "menu"];
+  if (navKinds.indexOf(a.kind) >= 0) {
+    emitIaNav(a.kind);
+    return { msg: `Apro ${a.label || a.kind}…`, navigated: true };
+  }
+
+  if (a.kind === "conferma_no") {
+    pendingExec = null;
+    return { msg: "Annullato.", done: true };
+  }
+
+  if (a.kind === "conferma_si") {
+    if (!pendingExec) return { msg: "Nessuna azione in attesa di conferma.", done: true };
+    const p = pendingExec;
+    pendingExec = null;
+    if (p.kind === "aggiungi_ordine_tavolo") {
+      const msg = await runAggiungiOrdine(p.params);
+      return { msg, done: true };
+    }
+    if (p.kind === "aggiungi_magazzino") {
+      return { msg: runAggiungiMagazzino(p.params), done: true };
+    }
+    return { msg: "Azione sconosciuta.", done: true };
+  }
+
+  if (a.kind === "aggiungi_ordine_tavolo") {
+    const params = a.params || {};
+    const tav = resolveTavolo(params.tavoloId ?? params.tavoloNome);
+    const piatto = params.piattoId
+      ? useMenteStore.getState().menu.find((x) => x.id === params.piattoId) || fuzzyPiatto(params.piattoNome || "")
+      : fuzzyPiatto(params.piattoNome || "");
+    const qta = Math.max(1, Number(params.qta) || 1);
+    if (!tav || !piatto) {
+      return { msg: `Non riesco a risolvere tavolo/piatto (${params.tavoloNome || params.tavoloId} / ${params.piattoNome}).`, done: true };
+    }
+    pendingExec = {
+      summary: `Confermi ${piatto.nome} x${qta} su ${tav.nome}?`,
+      kind: "aggiungi_ordine_tavolo",
+      params: { tavoloId: tav.id, tavoloNome: tav.nome, piattoId: piatto.id, piattoNome: piatto.nome, qta },
+    };
+    return {
+      msg: pendingExec.summary,
+      done: false,
+    };
+  }
+
+  if (a.kind === "aggiungi_magazzino") {
+    const params = a.params || {};
+    const nome = (params.nome || params.piattoNome || "").trim();
+    if (!nome) return { msg: "Nome articolo mancante.", done: true };
+    const qta = Number(params.qta);
+    pendingExec = {
+      summary: `Confermi aggiunta in magazzino: ${nome} qta ${Number.isFinite(qta) ? qta : 0} ${params.unita || "kg"}?`,
+      kind: "aggiungi_magazzino",
+      params: { ...params, nome, qta: Number.isFinite(qta) ? qta : 0, unita: params.unita || "kg", soglia: params.soglia ?? 1 },
+    };
+    return { msg: pendingExec.summary, done: false };
+  }
+
+  return { msg: "Azione non supportata.", done: true };
+}
+
+export function getPendingIaSummary(): string | null {
+  return pendingExec?.summary || null;
+}
+
+export function confirmAzioni(): IaAzione[] {
+  return [
+    { id: `si-${Date.now()}`, label: "Sì, conferma", kind: "conferma_si" },
+    { id: `no-${Date.now()}`, label: "Annulla", kind: "conferma_no" },
+  ];
+}
+
+/** Parse NL comandi operativi (ordine tavolo / magazzino). */
+export function tryParseOperativeChat(userText: string): { msg: string; azioni?: IaAzione[] } | null {
+  const raw = (userText || "").trim();
+  const q = raw.toLowerCase();
+  if (!q) return null;
+
+  // metti 2 carbonara al tavolo 3 / aggiungi carbonara x2 su T03
+  const ordineRe =
+    /(?:metti|aggiungi|porta|manda)\s+(?:(\d+)\s*[x×]?\s*)?([a-zàèéìòù0-9 '\-]+?)\s+(?:al|a|su|sul|sullo)\s+(?:il\s+)?tavolo\s*(t?\d+|\d+)/i;
+  const ordineRe2 =
+    /(?:metti|aggiungi|porta)\s+([a-zàèéìòù0-9 '\-]+?)\s*[x×]\s*(\d+)\s+(?:al|su)\s+(?:tavolo\s*)?(t?\d+)/i;
+  let m = ordineRe.exec(raw);
+  let piattoNome = "";
+  let qta = 1;
+  let tavRaw = "";
+  if (m) {
+    qta = Number(m[1] || 1) || 1;
+    piattoNome = m[2].trim();
+    tavRaw = m[3];
+  } else {
+    m = ordineRe2.exec(raw);
+    if (m) {
+      piattoNome = m[1].trim();
+      qta = Number(m[2]) || 1;
+      tavRaw = m[3];
+    }
+  }
+  if (piattoNome && tavRaw) {
+    const tav = resolveTavolo(tavRaw);
+    const piatto = fuzzyPiatto(piattoNome);
+    if (!tav) return { msg: `Tavolo non trovato: ${tavRaw}.` };
+    if (!piatto) return { msg: `Piatto non trovato nel menu: «${piattoNome}».` };
+    pendingExec = {
+      summary: `Confermi ${piatto.nome} x${qta} su ${tav.nome}?`,
+      kind: "aggiungi_ordine_tavolo",
+      params: { tavoloId: tav.id, tavoloNome: tav.nome, piattoId: piatto.id, piattoNome: piatto.nome, qta },
+    };
+    return { msg: pendingExec.summary, azioni: confirmAzioni() };
+  }
+
+  // aggiungi mozzarella al magazzino qta 10 [kg]
+  const magRe =
+    /(?:aggiungi|metti)\s+([a-zàèéìòù0-9 '\-]+?)\s+al\s+magazzino(?:\s+(?:qta|quantit[aà])\s*[=:]?\s*(\d+(?:[.,]\d+)?))?(?:\s*(kg|g|l|pz|conf))?/i;
+  const mm = magRe.exec(raw);
+  if (mm) {
+    const nome = mm[1].trim();
+    const qtaN = mm[2] ? Number(String(mm[2]).replace(",", ".")) : 0;
+    const unita = mm[3] || "kg";
+    pendingExec = {
+      summary: `Confermi aggiunta in magazzino: ${nome} qta ${qtaN} ${unita}?`,
+      kind: "aggiungi_magazzino",
+      params: { nome, qta: qtaN, unita, soglia: 1 },
+    };
+    return { msg: pendingExec.summary, azioni: confirmAzioni() };
+  }
+
+  return null;
 }
 
 let loopOn = false;
