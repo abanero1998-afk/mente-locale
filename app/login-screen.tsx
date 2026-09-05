@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listLocali, useAuth } from "@/lib/auth";
-import { DEMO_STAFF_PINS } from "@/lib/tenants";
+import { DEMO_STAFF_PINS, ensureSeededLocali } from "@/lib/tenants";
 import { playUi } from "@/lib/sounds";
 
 type Tab = "entra" | "crea";
@@ -15,7 +15,12 @@ export function LoginScreen() {
   const [pin, setPin] = useState("");
   const errore = useAuth((s) => s.errore);
   const lastPins = useAuth((s) => s.lastCreatedPins);
-  const locali = useMemo(() => listLocali(), [tab, lastPins]);
+  const [seedTick, setSeedTick] = useState(0);
+  useEffect(() => {
+    ensureSeededLocali();
+    setSeedTick((n) => n + 1);
+  }, []);
+  const locali = useMemo(() => listLocali(), [tab, lastPins, seedTick]);
 
   return (
     <div className="min-h-screen bg-[#050507] text-white flex items-center justify-center p-6">
