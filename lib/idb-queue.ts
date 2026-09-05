@@ -1,11 +1,16 @@
 import type { JobOffline } from "./types";
+import { getCurrentLocaleId } from "./scoped-storage";
 
-const DB = "mente-locale-v2";
 const STORE = "coda";
+
+function dbName() {
+  const id = getCurrentLocaleId() || "_none";
+  return `mente-locale-v2-${id}`;
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
+    const req = indexedDB.open(dbName(), 1);
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(STORE)) {
         req.result.createObjectStore(STORE, { keyPath: "id" });
