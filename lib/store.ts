@@ -6,6 +6,7 @@ import { scopedStorage } from "./scoped-storage";
 import type {
   ArticoloMagazzino,
   AvvisoSocio,
+  IaAzione,
   Frigo,
   JobOffline,
   LogTemp,
@@ -134,7 +135,8 @@ type Store = {
   togglePulizia: (id: string) => void;
   deletePulizia: (id: string) => void;
   setPrinter: (patch: Partial<PrinterConfig>) => void;
-  pushAvviso: (msg: string, urgente?: boolean) => void;
+  pushAvviso: (msg: string, urgente?: boolean, extra?: { azioni?: IaAzione[]; key?: string }) => void;
+  markAvvisiLetti: () => void;
   syncCoda: () => Promise<void>;
 };
 
@@ -186,6 +188,7 @@ export function menteStoreDefaults(): Omit<
   | "deletePulizia"
   | "setPrinter"
   | "pushAvviso"
+  | "markAvvisiLetti"
   | "syncCoda"
 > {
   return {
@@ -246,7 +249,7 @@ export const useMenteStore = create<Store>()(
         if (e.kind === "chiudi_tavolo") set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === e.tavoloId ? { ...t, stato: "libero", ordini: [], animazione: "none" } : t)) }));
         if (e.kind === "prodotto_add") set((s) => ({ menu: s.menu.some((p) => p.id === e.piatto.id) ? s.menu : [...s.menu, e.piatto] }));
         if (e.kind === "prodotto_del") set((s) => ({ menu: s.menu.filter((p) => p.id !== e.prodottoId) }));
-        if (e.kind === "avviso_socio") get().pushAvviso(e.msg, e.urgente);
+        if (e.kind === "avviso_socio") get().pushAvviso(e.msg, e.urgente, { azioni: e.azioni, key: e.key });
       },
       aggiungiOrdine: async (tavoloId, piatto, qta = 1, note) => {
         const ordine: Ordine = { id: `${Date.now()}-${piatto.id}-${Math.random().toString(36).slice(2, 6)}`, piatto, qta, note: note?.trim() || undefined, stato: "ordinato", ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) };
@@ -325,11 +328,29 @@ export const useMenteStore = create<Store>()(
       togglePulizia: (id) => set((s) => ({ pulizie: s.pulizie.map((p) => (p.id === id ? { ...p, fatto: !p.fatto, ts: Date.now() } : p)) })),
       deletePulizia: (id) => set((s) => ({ pulizie: s.pulizie.filter((p) => p.id !== id) })),
       setPrinter: (patch) => set((s) => ({ printer: { ...s.printer, ...patch } })),
-      pushAvviso: (msg, urgente = false) => {
+      pushAvviso: (msg, urgente = false, extra) => {
         set((s) => {
           if (s.avvisi[0]?.msg === msg && Date.now() - s.avvisi[0].ts < 20000) return s;
-          return { avvisi: [{ id: `ia-${Date.now()}`, msg, urgente, ts: Date.now() }, ...s.avvisi].slice(0, 20) };
+          return {
+            avvisi: [
+              {
+                id: `ia-${Date.now()}`,
+                msg,
+                urgente,
+                ts: Date.now(),
+                key: extra?.key,
+                azioni: extra?.azioni,
+                letto: false,
+              },
+              ...s.avvisi,
+            ].slice(0, 40),
+          };
         });
+      },
+      markAvvisiLetti: () => {
+        set((s) => ({
+          avvisi: s.avvisi.map((a) => (a.letto ? a : { ...a, letto: true })),
+        }));
       },
       syncCoda: async () => {
         const fromIdb = await codaAll().catch(() => get().codaOffline);
