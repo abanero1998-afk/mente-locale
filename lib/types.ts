@@ -53,6 +53,7 @@ export type RigaComanda = {
   id: string;
   piatto: Piatto;
   qta: number;
+  nota?: string;
 };
 
 export type Sala = {
