@@ -69,7 +69,8 @@ export function FiscalSettingsPanel() {
         </span>
       </div>
       <p className="text-[10px] text-white/35">
-        Software layer verso Registratore Telematico in LAN (Epson FpMate / 3i XonXoff). Non è certificazione fiscale.
+        Software layer verso Registratore Telematico in LAN (Epson FpMate / 3i XonXoff + bridge PC).
+        Non e certificazione fiscale — verifica i primi scontrini sull&apos;RT reale.
       </p>
 
       <p className="text-[10px] text-white/50 font-black pt-1">DATI FISCALE</p>
@@ -232,9 +233,29 @@ export function FiscalSettingsPanel() {
           className="w-full mt-1 p-3 rounded-xl bg-black/40 text-sm"
         />
       </div>
+      {fiscal.rt.vendor === "3i_xonxoff" && (
+        <div>
+          <label className="text-[9px] text-white/40">Bridge URL (HTTP del PC bridge, NON dell&apos;RT)</label>
+          <input
+            value={fiscal.rt.bridgeUrl || ""}
+            onChange={(e) => fiscal.setRt({ bridgeUrl: e.target.value.trim() })}
+            className="w-full mt-1 p-3 rounded-xl bg-black/40 text-sm"
+            placeholder="http://IP-DEL-PC:8787"
+          />
+          <p className="text-[9px] text-white/35 mt-1">
+            Esegui tools/rt-bridge-3i sul PC in Wi-Fi col RT (fondatore http://192.168.1.61:8787).
+            RT resta su 192.168.1.60:1723. Vercel non sostituisce il bridge.
+          </p>
+        </div>
+      )}
       <button
         type="button"
-        disabled={testing || !fiscal.rt.host}
+        disabled={
+          testing ||
+          (fiscal.rt.vendor === "3i_xonxoff"
+            ? !(fiscal.rt.bridgeUrl || "").trim() && !fiscal.rt.host
+            : !fiscal.rt.host)
+        }
         onClick={() => void testRt()}
         className="w-full py-3 rounded-full glass font-black text-sm disabled:opacity-40"
       >
@@ -300,14 +321,14 @@ export function FiscalSettingsPanel() {
         <p className="text-[10px] font-black text-white/50">CHECKLIST INSTALLAZIONE LOCALE</p>
         <ol className="text-[10px] text-white/55 list-decimal pl-4 space-y-1">
           <li>Collega il Registratore Telematico alla rete Wi‑Fi/LAN del locale</li>
-          <li>Assegna IP fisso al RT (es. 192.168.1.60 per Teste Matte A8010V)</li>
-          <li>Epson: FpMate CGI (/cgi-bin/fpmate.cgi). 3i XonXoff: TCP porta 1723</li>
-          <li>Inserisci IP/porta qui e premi Test connessione</li>
-          <li>Esegui il primo scontrino di prova su un tavolo</li>
+          <li>Assegna IP fisso al RT (es. 192.168.1.60 A8010V) — diverso dall&apos;IP del PC bridge</li>
+          <li>3i: avvia il bridge sul PC (tools/rt-bridge-3i, porta 8787) sulla stessa Wi‑Fi</li>
+          <li>Imposta Bridge URL (es. http://192.168.1.61:8787) e premi Test connessione</li>
+          <li>Verifica i primi scontrini sull&apos;RT reale (layer software, non certificazione)</li>
         </ol>
         <p className="text-[9px] text-white/35 pt-1">
-          Su Vercel il proxy non raggiunge la LAN: apri l&apos;app self-host sulla stessa Wi‑Fi, oppure reverse-proxy locale.
-          Il client prova fetch diretto al RT; se CORS fallisce usa /api/fiscal/rt.
+          Tablet + PC bridge + RT devono condividere la Wi‑Fi. Vercel cloud non raggiunge la LAN: il bridge e obbligatorio.
+          Per prove senza RT usa demoNonFiscale.
         </p>
         {!completo && (
           <p className="text-[10px] text-amber-300 pt-1">Profilo incompleto: inserisci P.IVA e ragione sociale.</p>
