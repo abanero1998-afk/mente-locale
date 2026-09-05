@@ -21,6 +21,7 @@ import { CassaTab } from "./cassa-tab";
 import { LoginScreen } from "./login-screen";
 import { SettingsPanel } from "./settings-panel";
 import { SyncHeaderBadge } from "./sync-panel"; /* pay+sync+reports §5-7 */
+import { playUi } from "@/lib/sounds";
 
 type Tab = "dashboard" | "tavoli" | "menu" | "haccp" | "cassa";
 const MENU_FALLBACK: Piatto[] = [
@@ -119,7 +120,7 @@ function KdsOnly({ reparto }: { reparto: Reparto }) {
         <div key={o.id} className="rounded-2xl glass p-4 mb-2">
           <p className="font-black">{o.tavolo} · {o.piatto.nome} x{o.qta}</p>
           {o.note ? <p className="text-xs italic text-white/55 mt-1">{o.note}</p> : null}
-          <button onClick={() => void useMenteStore.getState().setOrdineStato(o.id, "pronto")} className="text-[10px] mt-2 px-3 py-1 rounded-full bg-emerald-400 text-black font-black">PRONTO</button>
+          <button onClick={() => { playUi("success"); void useMenteStore.getState().setOrdineStato(o.id, "pronto"); }} className="text-[10px] mt-2 px-3 py-1 rounded-full bg-emerald-400 text-black font-black">PRONTO</button>
         </div>
       ))}
     </div>
@@ -534,12 +535,12 @@ export default function App() {
         <div className="fixed inset-0 z-50 bg-black/80 p-4 flex items-end">
           <div className="w-full rounded-[28px] glass-strong p-5">
             <div className="flex justify-between"><h2 className="font-black">KDS</h2><button onClick={() => setShowKds(false)}>✕</button></div>
-            <div className="flex gap-2 mt-3">{(["cucina", "bar"] as Reparto[]).map((r) => (<button key={r} onClick={() => setKdsFiltro(r)} className={`text-[10px] px-3 py-1 rounded-full ${kdsFiltro === r ? "bg-[#FF1A1A] text-black font-black" : "glass"}`}>{r.toUpperCase()}</button>))}</div>
+            <div className="flex gap-2 mt-3">{(["cucina", "bar"] as Reparto[]).map((r) => (<button key={r} onClick={() => { playUi("tap"); setKdsFiltro(r); }} className={`text-[10px] px-3 py-1 rounded-full ${kdsFiltro === r ? "bg-[#FF1A1A] text-black font-black" : "glass"}`}>{r.toUpperCase()}</button>))}</div>
             {kds.map((o) => (
               <div key={o.id} className="glass rounded-2xl p-3 mt-2">
                 <p className="font-black">{o.tavolo} {o.piatto.nome}</p>
                 {o.note ? <p className="text-xs italic text-white/55 mt-1">{o.note}</p> : null}
-                <button onClick={() => void useMenteStore.getState().setOrdineStato(o.id, "pronto")} className="text-[10px] mt-2 px-3 py-1 rounded-full bg-emerald-400 text-black font-black">PRONTO</button>
+                <button onClick={() => { playUi("success"); void useMenteStore.getState().setOrdineStato(o.id, "pronto"); }} className="text-[10px] mt-2 px-3 py-1 rounded-full bg-emerald-400 text-black font-black">PRONTO</button>
               </div>
             ))}
           </div>
@@ -591,7 +592,7 @@ export default function App() {
                     ))}
                   </div>
                 ))}
-                <button onClick={() => void inviaComanda()} className="w-full py-3 rounded-full bg-white text-black font-black">INVIA A KDS</button>
+                <button onClick={() => { playUi("success"); void inviaComanda(); }} className="w-full py-3 rounded-full bg-white text-black font-black">INVIA A KDS</button>
               </div>
             )}
             {selezionato.ordini.length > 0 && (() => {
@@ -724,7 +725,7 @@ export default function App() {
                 {payMsg && <p className="text-[11px] text-amber-300">{payMsg}</p>}
 
                 <button onClick={preconto} className="w-full py-3 rounded-full glass font-black text-sm">PRECONTO</button>
-                <button onClick={paga} className="w-full py-3 rounded-full bg-[#FF1A1A] text-black font-black">PAGA E CHIUDI</button>
+                <button onClick={() => { playUi("success"); paga(); }} className="w-full py-3 rounded-full bg-[#FF1A1A] text-black font-black">PAGA E CHIUDI</button>
                 <button onClick={stampaCopia} className="w-full py-3 rounded-full glass font-black text-sm">STAMPA COPIA</button>
               </div>
               );
@@ -735,7 +736,7 @@ export default function App() {
       <nav className="fixed bottom-4 left-3 right-3 max-w-[760px] mx-auto z-40">
         <div className="rounded-full nav-pill px-3 py-3 flex justify-between">
           {NAV.map((n) => (
-            <button key={n.id} onClick={() => setTab(n.id)} className="flex flex-col items-center min-w-[48px]">
+            <button key={n.id} onClick={() => { playUi("nav"); setTab(n.id); }} className="flex flex-col items-center min-w-[48px]">
               <Icon name={n.icon} active={tab === n.id} />
               <span className={`text-[8px] mt-1 ${tab === n.id ? "text-[#FF2A2A]" : "text-white/45"}`}>{n.label}</span>
             </button>
