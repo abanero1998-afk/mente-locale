@@ -58,17 +58,17 @@ export function ProdottoRow({ p, onDelete }: { p: Piatto; onDelete: (id: string)
           <ProductThumb src={p.img} alt={p.nome} size={52} />
           <div className="min-w-0">
             <p className="font-bold truncate">{p.nome}</p>
-            <p className="text-[11px] text-white/50">€{p.prezzo.toFixed(2)}</p>
+            <p className="text-[11px] text-white/50">EUR {p.prezzo.toFixed(2)}</p>
           </div>
         </div>
         <span className="text-[10px] text-white/40 tracking-widest shrink-0">
-          {p.categoria} • {p.reparto.toUpperCase()}
+          {p.categoria} - {p.reparto.toUpperCase()}
         </span>
       </div>
       {showDelete && (
         <div className="absolute inset-0 bg-[#FF1A1A] flex justify-end items-center pr-6">
           <button onClick={() => onDelete(p.id)} className="text-black font-black">
-            ELIMINA ✕
+            ELIMINA
           </button>
         </div>
       )}
@@ -95,18 +95,18 @@ const EMPTY_FORM: FormState = {
 export function MenuTab({ onAdd }: { onAdd?: () => void }) {
   const menu = useMenteStore((s) => s.menu);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
   const bySection = useMemo(() => {
-    const map = new Map<string, Piatto[]>();
-    for (const s of SEZIONI_MENU) map.set(s, []);
+    const sections: Record<string, Piatto[]> = {};
+    for (const s of SEZIONI_MENU) sections[s] = [];
     const altri: Piatto[] = [];
     for (const p of menu) {
-      if (map.has(p.categoria)) map.get(p.categoria)!.push(p);
+      if (Object.prototype.hasOwnProperty.call(sections, p.categoria)) sections[p.categoria].push(p);
       else altri.push(p);
     }
-    return { map, altri };
+    return { sections, altri };
   }, [menu]);
 
   const openAdd = () => {
@@ -138,22 +138,26 @@ export function MenuTab({ onAdd }: { onAdd?: () => void }) {
       <div className="flex justify-between items-end">
         <div>
           <h2 className="font-black tracking-widest text-sm">MENU</h2>
-          <p className="text-[10px] text-white/40">Sezioni • swipe SX elimina • sync live</p>
+          <p className="text-[10px] text-white/40">Sezioni - swipe SX elimina - sync live</p>
         </div>
         <span className="text-[10px] text-white/30">{menu.length} piatti</span>
       </div>
 
       {SEZIONI_MENU.map((sez) => {
-        const items = bySection.map.get(sez) || [];
+        const items = bySection.sections[sez] || [];
         if (!items.length) return null;
         return (
           <section key={sez} className="space-y-2">
-            <h3 className="text-[11px] font-black tracking-[0.18em] text-[#FF2A2A]/sez.toUpperCase()}</h3>
+            <h3 className="text-[11px] font-black tracking-[0.18em] text-[#FF2A2A]">
+              {sez.toUpperCase()}
+            </h3>
             {items.map((p) => (
               <ProdottoRow
                 key={p.id}
                 p={p}
-                onDelete={(id) => void useMenteStore.getState().eliminaProdotto(id)}
+                onDelete={(id) => {
+                  void useMenteStore.getState().eliminaProdotto(id);
+                }}
               />
             ))}
           </section>
@@ -167,7 +171,9 @@ export function MenuTab({ onAdd }: { onAdd?: () => void }) {
             <ProdottoRow
               key={p.id}
               p={p}
-              onDelete={(id) => void useMenteStore.getState().eliminaProdotto(id)}
+              onDelete={(id) => {
+                void useMenteStore.getState().eliminaProdotto(id);
+              }}
             />
           ))}
         </section>
@@ -183,7 +189,7 @@ export function MenuTab({ onAdd }: { onAdd?: () => void }) {
             <div className="flex justify-between items-center">
               <h3 className="font-black tracking-wide">NUOVO PRODOTTO</h3>
               <button onClick={() => setShowForm(false)} className="text-white/50">
-                ✕
+                X
               </button>
             </div>
             <label className="block space-y-1">
@@ -196,7 +202,7 @@ export function MenuTab({ onAdd }: { onAdd?: () => void }) {
               />
             </label>
             <label className="block space-y-1">
-              <span className="text-[10px] text-white/40 tracking-widest">PREZZO €</span>
+              <span className="text-[10px] text-white/40 tracking-widest">PREZZO EUR</span>
               <input
                 value={form.prezzo}
                 onChange={(e) => setForm((f) => ({ ...f, prezzo: e.target.value }))}
@@ -246,11 +252,13 @@ export function MenuTab({ onAdd }: { onAdd?: () => void }) {
               </div>
             )}
             <button
-              onClick={() => void salva()}
+              onClick={() => {
+                void salva();
+              }}
               disabled={saving || !form.nome.trim()}
               className="w-full py-4 rounded-full bg-[#FF1A1A] text-black font-black disabled:opacity-40"
             >
-              {saving ? "SALVO…" : "SALVA PRODOTTO"}
+              {saving ? "SALVO..." : "SALVA PRODOTTO"}
             </button>
           </div>
         </div>
