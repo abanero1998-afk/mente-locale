@@ -7,13 +7,21 @@ import { canFullApp, useAuth } from "@/lib/auth";
 import { useCassa, type Pagamento } from "@/lib/cassa";
 import { apriStampa, ticketHtml } from "@/lib/ticket";
 import type { Piatto, Reparto, RigaComanda, Tavolo } from "@/lib/types";
-import { MenuTab } from "./menu-tab";
+import { MenuTab, ProductThumb } from "./menu-tab";
 import { HaccpTab } from "./haccp-tab";
 import { CassaTab } from "./cassa-tab";
 import { LoginScreen } from "./login-screen";
 
 type Tab = "dashboard" | "tavoli" | "menu" | "haccp" | "cassa";
-const MENU_FALLBACK: Piatto[] = [{ id: "1", nome: "Carbonara", prezzo: 16, reparto: "cucina", categoria: "Primi", img: "🍝" }];
+const MENU_FALLBACK: Piatto[] = [
+  { id: "1", nome: "Carbonara", prezzo: 16, reparto: "cucina", categoria: "Primi", img: "https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400&h=300&fit=crop" },
+  { id: "2", nome: "Cacio e Pepe", prezzo: 15, reparto: "cucina", categoria: "Primi", img: "https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?w=400&h=300&fit=crop" },
+  { id: "3", nome: "Tagliata di manzo", prezzo: 28, reparto: "cucina", categoria: "Secondi", img: "https://images.unsplash.com/photo-1600891964092-4316c288032e?w=400&h=300&fit=crop" },
+  { id: "4", nome: "Patate al forno", prezzo: 6, reparto: "cucina", categoria: "Contorni", img: "https://images.unsplash.com/photo-1518013431117-eb1465fa5752?w=400&h=300&fit=crop" },
+  { id: "5", nome: "Tiramisù", prezzo: 8, reparto: "cucina", categoria: "Dolci", img: "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=400&h=300&fit=crop" },
+  { id: "6", nome: "Spritz", prezzo: 9, reparto: "bar", categoria: "Bevande", img: "https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=400&h=300&fit=crop" },
+  { id: "7", nome: "Chianti Classico", prezzo: 28, reparto: "bar", categoria: "Vini", img: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=400&h=300&fit=crop" },
+];
 const NAV: { id: Tab; label: string; icon: string }[] = [
   { id: "dashboard", label: "Dashboard", icon: "grid" },
   { id: "tavoli", label: "Tavoli", icon: "table" },
@@ -195,7 +203,13 @@ export default function App() {
           <div className="w-full max-w-[560px] mx-auto rounded-[28px] glass-strong p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between"><h2 className="font-black">{selezionato.nome}</h2><button onClick={() => setSelezionato(null)}>✕</button></div>
             <div className="grid grid-cols-2 gap-2 mt-4">{menuLive.map((p) => (
-              <button key={p.id} onClick={() => setComanda((rows) => { const f = rows.find((r) => r.piatto.id === p.id); return f ? rows.map((r) => r.piatto.id === p.id ? { ...r, qta: r.qta + 1 } : r) : [...rows, { id: `c-${Date.now()}`, piatto: p, qta: 1 }]; })} className="text-left p-3 rounded-2xl glass"><p className="text-sm font-bold">{p.img} {p.nome}</p></button>
+              <button key={p.id} onClick={() => setComanda((rows) => { const f = rows.find((r) => r.piatto.id === p.id); return f ? rows.map((r) => r.piatto.id === p.id ? { ...r, qta: r.qta + 1 } : r) : [...rows, { id: `c-${Date.now()}`, piatto: p, qta: 1 }]; })} className="text-left p-2.5 rounded-2xl glass flex items-center gap-2">
+                <ProductThumb src={p.img} alt={p.nome} size={40} />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold truncate">{p.nome}</p>
+                  <p className="text-[10px] text-white/40">€{p.prezzo} · {p.categoria}</p>
+                </div>
+              </button>
             ))}</div>
             {comanda.length > 0 && <button onClick={() => void inviaComanda()} className="w-full mt-3 py-3 rounded-full bg-white text-black font-black">INVIA + STAMPA COMANDA</button>}
             {selezionato.ordini.length > 0 && (

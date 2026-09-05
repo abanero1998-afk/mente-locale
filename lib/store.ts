@@ -41,12 +41,19 @@ function makeTavoli(): Tavolo[] {
 }
 
 const MENU_SEED: Piatto[] = [
-  { id: "1", nome: "Carbonara", prezzo: 16, reparto: "cucina", categoria: "Primi", img: "🍝" },
-  { id: "2", nome: "Tagliata", prezzo: 28, reparto: "cucina", categoria: "Secondi", img: "🥩" },
-  { id: "3", nome: "Negroni", prezzo: 10, reparto: "bar", categoria: "Cocktail", img: "🍸" },
-  { id: "4", nome: "Tiramisu", prezzo: 8, reparto: "cucina", categoria: "Dolci", img: "🍰" },
-  { id: "5", nome: "Spritz", prezzo: 9, reparto: "bar", categoria: "Cocktail", img: "🍹" },
-  { id: "6", nome: "Cacio Pepe", prezzo: 15, reparto: "cucina", categoria: "Primi", img: "🧀" },
+  { id: "1", nome: "Carbonara", prezzo: 16, reparto: "cucina", categoria: "Primi", img: "https://images.unsplash.com/photo-1612874742237-6526221588e3?w=400&h=300&fit=crop" },
+  { id: "2", nome: "Cacio e Pepe", prezzo: 15, reparto: "cucina", categoria: "Primi", img: "https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?w=400&h=300&fit=crop" },
+  { id: "3", nome: "Tagliata di manzo", prezzo: 28, reparto: "cucina", categoria: "Secondi", img: "https://images.unsplash.com/photo-1600891964092-4316c288032e?w=400&h=300&fit=crop" },
+  { id: "4", nome: "Branzino al forno", prezzo: 24, reparto: "cucina", categoria: "Secondi", img: "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=400&h=300&fit=crop" },
+  { id: "5", nome: "Patate al forno", prezzo: 6, reparto: "cucina", categoria: "Contorni", img: "https://images.unsplash.com/photo-1518013431117-eb1465fa5752?w=400&h=300&fit=crop" },
+  { id: "6", nome: "Insalata mista", prezzo: 7, reparto: "cucina", categoria: "Contorni", img: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=300&fit=crop" },
+  { id: "7", nome: "Tiramisù", prezzo: 8, reparto: "cucina", categoria: "Dolci", img: "https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=400&h=300&fit=crop" },
+  { id: "8", nome: "Panna cotta", prezzo: 7, reparto: "cucina", categoria: "Dolci", img: "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&h=300&fit=crop" },
+  { id: "9", nome: "Acqua naturale", prezzo: 3, reparto: "bar", categoria: "Bevande", img: "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?w=400&h=300&fit=crop" },
+  { id: "10", nome: "Spritz", prezzo: 9, reparto: "bar", categoria: "Bevande", img: "https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=400&h=300&fit=crop" },
+  { id: "11", nome: "Negroni", prezzo: 10, reparto: "bar", categoria: "Bevande", img: "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop" },
+  { id: "12", nome: "Chianti Classico", prezzo: 28, reparto: "bar", categoria: "Vini", img: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=400&h=300&fit=crop" },
+  { id: "13", nome: "Vermentino", prezzo: 22, reparto: "bar", categoria: "Vini", img: "https://images.unsplash.com/photo-1569529465841-dfecdab7503b?w=400&h=300&fit=crop" },
 ];
 
 const MAG_SEED: ArticoloMagazzino[] = [
@@ -214,7 +221,7 @@ export const useMenteStore = create<Store>()(
         await pushEvent(ev, { id: `cl-${id}-${Date.now()}`, tipo: "chiudi", tavoloId: id, ts: Date.now() }, set);
       },
       aggiungiProdotto: async (form) => {
-        const piatto: Piatto = { id: `p-${Date.now()}`, nome: form.nome.trim() || "Nuovo piatto", prezzo: Number(form.prezzo) || 0, categoria: form.categoria || "Primi", reparto: form.reparto || "cucina", img: form.img || "🍝" };
+        const piatto: Piatto = { id: `p-${Date.now()}`, nome: form.nome.trim() || "Nuovo piatto", prezzo: Number(form.prezzo) || 0, categoria: form.categoria || "Primi", reparto: form.reparto || "cucina", img: form.img.trim() || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop" };
         set((s) => ({ menu: [...s.menu, piatto] }));
         const ev: SyncEvent = { kind: "prodotto_add", piatto, deviceId };
         await pushEvent(ev, { id: piatto.id, tipo: "prodotto_add", tavoloId: 0, piatto, ts: Date.now() }, set);
