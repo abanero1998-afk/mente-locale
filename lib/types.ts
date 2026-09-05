@@ -203,4 +203,6 @@ export type SyncEvent =
   | { kind: "chiudi_tavolo"; tavoloId: number; deviceId: string }
   | { kind: "prodotto_add"; piatto: Piatto; deviceId: string }
   | { kind: "prodotto_del"; prodottoId: string; deviceId: string }
-  | { kind: "avviso_socio"; msg: string; urgente: boolean; deviceId: string };
+  | { kind: "avviso_socio"; msg: string; urgente: boolean; deviceId: string }
+  | { kind: "presence"; deviceId: string; nome: string; ruolo: string; ts: number }
+  | { kind: "sync_ping"; deviceId: string; ts: number };
