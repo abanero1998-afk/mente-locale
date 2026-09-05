@@ -307,7 +307,7 @@ export const useMenteStore = create<Store>()(
 );
 
 let wired = false;
-export function wireSync() {
+export function wireSync() { /* presence wired §6 */
   if (wired || typeof window === "undefined") return;
   wired = true;
   useMenteStore.setState({ online: navigator.onLine, hydrated: true });
