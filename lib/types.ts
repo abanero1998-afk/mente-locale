@@ -178,11 +178,30 @@ export type Scontrino = {
   ts: number;
 };
 
+export type IaAzioneKind =
+  | "magazzino"
+  | "haccp"
+  | "kds"
+  | "prenotazioni"
+  | "tavolo"
+  | "cassa"
+  | "menu";
+
+export type IaAzione = {
+  id: string;
+  label: string;
+  kind: IaAzioneKind;
+};
+
 export type AvvisoSocio = {
   id: string;
   msg: string;
   urgente: boolean;
   ts: number;
+  /** Chiave logica per anti-spam / dedupe */
+  key?: string;
+  azioni?: IaAzione[];
+  letto?: boolean;
 };
 
 export type JobOffline = {
@@ -203,6 +222,6 @@ export type SyncEvent =
   | { kind: "chiudi_tavolo"; tavoloId: number; deviceId: string }
   | { kind: "prodotto_add"; piatto: Piatto; deviceId: string }
   | { kind: "prodotto_del"; prodottoId: string; deviceId: string }
-  | { kind: "avviso_socio"; msg: string; urgente: boolean; deviceId: string }
+  | { kind: "avviso_socio"; msg: string; urgente: boolean; deviceId: string; key?: string; azioni?: IaAzione[] }
   | { kind: "presence"; deviceId: string; nome: string; ruolo: string; ts: number }
   | { kind: "sync_ping"; deviceId: string; ts: number };
