@@ -1,7 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { scopedStorage } from "./scoped-storage";
 import type { Abbattimento, ControlloOlio, Fornitore, Postazione, Sala } from "./types";
 import { useMenteStore } from "./store";
 
@@ -28,6 +29,20 @@ type Locale = {
   addTavolo: (salaId: string) => void;
   deleteTavolo: (id: number) => void;
 };
+
+
+export function localeStoreDefaults() {
+  return {
+    postazione: null as Postazione | null,
+    sale: SALE_SEED.map((s) => ({ ...s })),
+    fornitori: [
+      { id: "fo1", nome: "Rossi Food", categoria: "Latticini", telefono: "3470000000", note: "Consegna lun/gio" },
+      { id: "fo2", nome: "Pescheria Blu", categoria: "Pesce", telefono: "3331112233", note: "Mattina" },
+    ],
+    oli: [{ id: "ol1", vasca: "Friggitrice 1", polarita: 18, filtro: "Ok", ts: Date.now() - 86400000, ok: true }],
+    abbattimenti: [] as Abbattimento[],
+  };
+}
 
 export const useLocaleStore = create<Locale>()(
   persist(
@@ -95,6 +110,9 @@ export const useLocaleStore = create<Locale>()(
         useMenteStore.setState({ tavoli: useMenteStore.getState().tavoli.filter((t) => t.id !== id) });
       },
     }),
-    { name: "mente-locale-locale-v1" }
+    {
+      name: "mente-locale-locale-v2",
+      storage: createJSONStorage(() => scopedStorage),
+    }
   )
 );
