@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMenteStore } from "@/lib/store";
 import { useLocaleStore } from "@/lib/locale-store";
 import type { HaccpView, PrinterMode } from "@/lib/types";
-import { buildAslCsv, downloadAslFile } from "@/lib/haccp-export";
+import { buildAslCsv, buildTempOnlyCsv, downloadAslFile, downloadTempLog } from "@/lib/haccp-export";
 
 const inp = "w-full p-3 rounded-xl bg-black/30 border border-white/10 mt-2";
 
@@ -75,7 +75,7 @@ export function HaccpTab() {
         </div>
         <div className="grid grid-cols-2 gap-3 mt-3">
           <button onClick={() => setView("stampante")} className="rounded-[22px] glass p-4 text-left"><p className="font-black text-sm">Stampante</p><p className="text-[10px] text-white/40">ZPL • BT • HTTPS</p></button>
-          <button onClick={() => setView("asl")} className="rounded-[22px] glass p-4 text-left"><p className="font-black text-sm">Export ASL</p><p className="text-[10px] text-white/40">Scarica file CSV</p></button>
+          <button onClick={() => setView("asl")} className="rounded-[22px] glass-strong p-4 text-left border border-[#FF1A1A]/30"><p className="font-black text-sm text-[#FF1A1A]">EXPORT ASL</p><p className="text-[10px] text-white/40">Registro completo CSV</p></button>
         </div>
       </div>
     );
@@ -251,8 +251,30 @@ export function HaccpTab() {
   return (
     <div>
       <Back onClick={() => setView("hub")} title="EXPORT ASL" />
-      <p className="text-sm text-white/50">File CSV con lotti, magazzino, frighi, log e pulizie.</p>
-      <button onClick={() => downloadAslFile(buildAslCsv({ lotti, magazzino, frighi, logTemp, pulizie }))} className="w-full mt-4 py-3 rounded-full bg-white text-black font-black">SCARICA FILE ASL</button>
+      <p className="text-sm text-white/50 mb-2">Registro completo per controllo ASL: lotti, magazzino, frighi, temperature, pulizie.</p>
+      <button
+        onClick={() => downloadAslFile(buildAslCsv({ lotti, magazzino, frighi, logTemp, pulizie }))}
+        className="w-full mt-2 py-5 rounded-[20px] bg-[#FF1A1A] text-black font-black text-base tracking-wide shadow-lg"
+      >
+        EXPORT ASL
+      </button>
+      <button
+        onClick={() => {
+          if (!logTemp.length) { setMsg("Nessun log temperature ancora"); return; }
+          downloadTempLog(buildTempOnlyCsv(logTemp));
+          setMsg("Log temperature esportato");
+        }}
+        className="w-full mt-3 py-3 rounded-full glass font-black text-sm"
+      >
+        CSV SOLO TEMPERATURE
+      </button>
+      <button
+        onClick={() => downloadAslFile(buildAslCsv({ lotti, magazzino, frighi, logTemp, pulizie }))}
+        className="w-full mt-2 py-3 rounded-full bg-white text-black font-black text-sm"
+      >
+        SCARICA FILE ASL (CSV)
+      </button>
+      {msg && <p className="text-[10px] text-white/40 mt-2">{msg}</p>}
     </div>
   );
 }
