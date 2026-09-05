@@ -9,6 +9,7 @@ import {
   findStaffByPin,
   getLocale,
   listLocali,
+  resolveLocale,
   type LocaleTenant,
 } from "./tenants";
 
@@ -72,17 +73,24 @@ export const useAuth = create<AuthState>()(
         return true;
       },
       login: (localeId, pin) => {
-        const id = (localeId || "").trim().toLowerCase().replace(/\s+/g, "");
-        if (!id) {
+        const raw = (localeId || "").trim();
+        const id = raw.toLowerCase().replace(/\s+/g, "");
+        if (!id && !raw) {
           set({ errore: "Seleziona o inserisci un locale", sessione: null });
           return false;
         }
-        const loc = getLocale(id);
+        let loc = resolveLocale(id) || getLocale(id);
+        if (!loc && raw) {
+          loc = resolveLocale(raw) || getLocale(raw);
+        }
         if (!loc) {
-          set({ errore: "Locale non trovato — crealo prima", sessione: null });
+          set({
+            errore: "Locale non trovato. Seleziona Teste Matte dalla lista o scrivi testematte",
+            sessione: null,
+          });
           return false;
         }
-        const user = findStaffByPin(id, pin);
+        const user = findStaffByPin(loc.id, pin);
         if (!user) {
           set({ errore: "PIN non valido per questo locale", sessione: null });
           return false;
@@ -131,5 +139,5 @@ export function canFullApp(ruolo: StaffRole) {
   return ruolo === "cameriere" || ruolo === "titolare";
 }
 
-export { listLocali, getLocale };
+export { listLocali, getLocale, resolveLocale };
 export type { LocaleTenant };
