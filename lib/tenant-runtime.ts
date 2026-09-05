@@ -7,6 +7,36 @@ import { useLocaleStore, localeStoreDefaults } from "./locale-store";
 import { useMenteStore, menteStoreDefaults } from "./store";
 import { rebindSyncChannel } from "./sync";
 import { useFiscal, defaultFiscalBundle } from "./fiscal";
+import {
+  TESTEMATTE_LOCALE_ID,
+  TESTEMATTE_MENU,
+  TESTEMATTE_MENU_SEED_FLAG,
+  TESTEMATTE_MENU_SEED_VERSION,
+} from "./locale-seeds/testematte";
+import type { Piatto } from "./types";
+
+
+/** True if menu still looks like the default Carbonara MENU_SEED (or empty). */
+function isDefaultOrEmptyMenu(menu: Piatto[]): boolean {
+  if (!menu || menu.length === 0) return true;
+  const hasCarbonara = menu.some((p) => p.id === "1" && p.nome === "Carbonara");
+  const hasTesteMatte = menu.some((p) => p.id.startsWith("tm-"));
+  return hasCarbonara && !hasTesteMatte;
+}
+
+/** Seed Teste Matte dinner menu once; do not overwrite after dinner-v1 flag. */
+export function ensureTesteMatteMenu() {
+  if (typeof localStorage === "undefined") return;
+  const flag = localStorage.getItem(TESTEMATTE_MENU_SEED_FLAG);
+  const menu = useMenteStore.getState().menu || [];
+  // Do NOT overwrite if already seeded (titolare may have edited).
+  if (flag === TESTEMATTE_MENU_SEED_VERSION) return;
+  // Seed when flag missing/outdated, or menu still default Carbonara / empty.
+  if (flag !== TESTEMATTE_MENU_SEED_VERSION || isDefaultOrEmptyMenu(menu)) {
+    useMenteStore.setState({ menu: TESTEMATTE_MENU });
+    localStorage.setItem(TESTEMATTE_MENU_SEED_FLAG, TESTEMATTE_MENU_SEED_VERSION);
+  }
+}
 
 /** Switch all persisted stores to a locale namespace and rehydrate. */
 export function activateLocale(localeId: string) {
@@ -34,6 +64,9 @@ export function activateLocale(localeId: string) {
       if (st.scontrini.length === 0 && st.chiusure.length === 0) {
         useCassa.getState().setFondo(fondo);
       }
+    }
+    if (id === TESTEMATTE_LOCALE_ID) {
+      ensureTesteMatteMenu();
     }
     rebindSyncChannel();
     useMenteStore.setState({ hydrated: true });
