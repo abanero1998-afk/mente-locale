@@ -5,6 +5,8 @@ import { deviceId, publishLocal, publishRemote, supabaseConfigured } from "./syn
 
 const WA_TO = process.env.NEXT_PUBLIC_SOCIO_WA || "+3444106229";
 const SLOT_HOURS = [17, 19, 21, 23];
+const KDS_STALE_MS = 20 * 60 * 1000;
+const PULIZIA_STALE_MS = 12 * 60 * 60 * 1000;
 
 function playIaSound(urgente: boolean) {
   const audio = new Audio(urgente ? "/sounds/alarm.wav" : "/sounds/ding-pronto.wav");
@@ -56,16 +58,83 @@ export async function avvisaSocio(msg: string) {
   }
 }
 
+/** Stima età ordine da `ora` HH:MM (oggi); null se non affidabile. */
+function etàDaOra(ora: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((ora || "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  const now = new Date();
+  const then = new Date(now);
+  then.setHours(h, min, 0, 0);
+  let diff = now.getTime() - then.getTime();
+  if (diff < -30 * 60 * 1000) diff += 24 * 60 * 60 * 1000; // ieri sera
+  if (diff < 0 || diff > 18 * 60 * 60 * 1000) return null;
+  return diff;
+}
+
 export async function runIaCheck() {
-  const { tavoli, magazzino, frighi } = useMenteStore.getState();
+  const { tavoli, magazzino, frighi, prenotazioni, pulizie } = useMenteStore.getState();
   const critici = magazzino.filter((m) => m.qta < m.soglia || m.qta < 5);
   const fuori = frighi.filter((f) => f.temp > f.max || f.temp < f.min);
   const lenti = tavoli.filter((t) => t.stato !== "libero" && t.tempo > 60);
-  if (critici.length) await avvisaSocio(`⚠️ Sergio, stanno finendo: ${critici.map((m) => m.nome).join(", ")}. Ordino da Rossi?`);
-  if (fuori.length) await avvisaSocio(`🚨 Frigo ${fuori[0].nome} a ${fuori[0].temp}°C! Chiama tecnico!`);
-  if (lenti.length) await avvisaSocio(`⏱️ ${lenti[0].nome} occupato da ${lenti[0].tempo}min, sollecita?`);
-  if (!critici.length && !fuori.length && !lenti.length) {
-    await avvisaSocio("✅ Tutto ok: magazzino, frighi e tempi tavolo sotto controllo.");
+  const daConfermare = prenotazioni.filter((p) => p.stato === "da_confermare");
+  const puliziePending = pulizie.filter(
+    (p) => !p.fatto || (p.ts > 0 && Date.now() - p.ts > PULIZIA_STALE_MS && !p.fatto)
+  );
+  const pulizieOverdue = pulizie.filter((p) => !p.fatto && Date.now() - p.ts > PULIZIA_STALE_MS);
+  const conto = tavoli.filter((t) => t.stato === "conto");
+  const kdsStale = tavoli.flatMap((t) =>
+    t.ordini
+      .filter((o) => o.stato === "ordinato" || o.stato === "in_prep")
+      .map((o) => {
+        const età = etàDaOra(o.ora);
+        return età != null && età > KDS_STALE_MS ? { ...o, tavolo: t.nome, età } : null;
+      })
+      .filter(Boolean)
+  );
+
+  let alerted = false;
+  if (critici.length) {
+    await avvisaSocio(`⚠️ Sergio, stanno finendo: ${critici.map((m) => m.nome).join(", ")}. Ordino da Rossi?`);
+    alerted = true;
+  }
+  if (fuori.length) {
+    await avvisaSocio(`🚨 Frigo ${fuori[0].nome} a ${fuori[0].temp}°C! Chiama tecnico!`);
+    alerted = true;
+  }
+  if (lenti.length) {
+    await avvisaSocio(`⏱️ ${lenti[0].nome} occupato da ${lenti[0].tempo}min, sollecita?`);
+    alerted = true;
+  }
+  if (daConfermare.length) {
+    await avvisaSocio(
+      `📅 Prenotazioni da confermare: ${daConfermare.map((p) => `${p.nome} (${p.quando})`).join(", ")}.`
+    );
+    alerted = true;
+  }
+  if (pulizieOverdue.length || puliziePending.filter((p) => !p.fatto).length) {
+    const zone = (pulizieOverdue.length ? pulizieOverdue : pulizie.filter((p) => !p.fatto))
+      .map((p) => p.zona)
+      .slice(0, 4);
+    await avvisaSocio(`🧹 Pulizie incomplete o in ritardo: ${zone.join(", ")}.`);
+    alerted = true;
+  }
+  if (conto.length) {
+    await avvisaSocio(`💳 Tavoli in conto da chiudere: ${conto.map((t) => t.nome).join(", ")}.`);
+    alerted = true;
+  }
+  if (kdsStale.length) {
+    const first = kdsStale[0] as { tavolo: string; piatto: { nome: string }; età: number };
+    const min = Math.round(first.età / 60000);
+    await avvisaSocio(
+      `🍳 Ordine KDS fermo da ~${min} min: ${first.tavolo} · ${first.piatto.nome}${kdsStale.length > 1 ? ` (+${kdsStale.length - 1})` : ""}.`
+    );
+    alerted = true;
+  }
+  if (!alerted) {
+    await avvisaSocio("✅ Tutto ok: magazzino, frighi, prenotazioni e tempi sotto controllo.");
   }
 }
 
@@ -90,6 +159,11 @@ let loopOn = false;
 export function startIaLoop() {
   if (loopOn || typeof window === "undefined") return;
   loopOn = true;
+  try {
+    if ("Notification" in window && Notification.permission === "default") {
+      void Notification.requestPermission();
+    }
+  } catch {}
   setTimeout(() => void runIaCheck(), 2500);
   setTimeout(() => void checkFrigoSlot(), 4000);
   setInterval(() => void runIaCheck(), 300000);
