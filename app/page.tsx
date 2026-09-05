@@ -6,7 +6,7 @@ import { useLocaleStore } from "@/lib/locale-store";
 import { canFullApp, useAuth } from "@/lib/auth";
 import { useCassa, type Pagamento } from "@/lib/cassa";
 import { apriStampa, ticketHtml } from "@/lib/ticket";
-import type { Piatto, Reparto, RigaComanda, Tavolo } from "@/lib/types";
+import { SEZIONI_MENU, type Piatto, type Reparto, type RigaComanda, type Tavolo } from "@/lib/types";
 import { MenuTab, ProductThumb } from "./menu-tab";
 import { HaccpTab } from "./haccp-tab";
 import { CassaTab } from "./cassa-tab";
@@ -34,11 +34,54 @@ function oraNow() {
   return new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 }
 
+function sezioneDi(item: { piatto?: Piatto; categoria?: string }): string {
+  const cat = (item.piatto?.categoria || item.categoria || "").trim();
+  if ((SEZIONI_MENU as readonly string[]).includes(cat)) return cat;
+  return "Altro";
+}
+
+function groupBySezione<T extends { piatto?: Piatto; categoria?: string }>(items: T[]): { sezione: string; items: T[] }[] {
+  const buckets: Record<string, T[]> = {};
+  for (const it of items) {
+    const key = sezioneDi(it);
+    if (!buckets[key]) buckets[key] = [];
+    buckets[key].push(it);
+  }
+  const ordered: { sezione: string; items: T[] }[] = [];
+  for (const s of SEZIONI_MENU) {
+    if (buckets[s]?.length) ordered.push({ sezione: s, items: buckets[s] });
+  }
+  if (buckets["Altro"]?.length) ordered.push({ sezione: "Altro", items: buckets["Altro"] });
+  return ordered;
+}
+
 function stampaComanda(tavolo: string, righe: RigaComanda[], locale: string) {
   const cucina = righe.filter((r) => r.piatto.reparto === "cucina");
   const bar = righe.filter((r) => r.piatto.reparto === "bar");
-  if (cucina.length) apriStampa(ticketHtml({ tipo: "COMANDA CUCINA", tavolo, ora: oraNow(), locale, righe: cucina.map((r) => ({ nome: r.piatto.nome, qta: r.qta })) }));
-  if (bar.length) setTimeout(() => apriStampa(ticketHtml({ tipo: "COMANDA BAR", tavolo, ora: oraNow(), locale, righe: bar.map((r) => ({ nome: r.piatto.nome, qta: r.qta })) })), 400);
+  if (cucina.length)
+    apriStampa(
+      ticketHtml({
+        tipo: "COMANDA CUCINA",
+        tavolo,
+        ora: oraNow(),
+        locale,
+        righe: cucina.map((r) => ({ nome: r.piatto.nome, qta: r.qta, nota: r.nota })),
+      })
+    );
+  if (bar.length)
+    setTimeout(
+      () =>
+        apriStampa(
+          ticketHtml({
+            tipo: "COMANDA BAR",
+            tavolo,
+            ora: oraNow(),
+            locale,
+            righe: bar.map((r) => ({ nome: r.piatto.nome, qta: r.qta, nota: r.nota })),
+          })
+        ),
+      400
+    );
   void fetch("/api/ticket", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tipo: "comanda", tavolo }) });
 }
 
@@ -65,6 +108,7 @@ function KdsOnly({ reparto }: { reparto: Reparto }) {
       {kds.map((o) => (
         <div key={o.id} className="rounded-2xl glass p-4 mb-2">
           <p className="font-black">{o.tavolo} · {o.piatto.nome} x{o.qta}</p>
+          {o.note ? <p className="text-xs italic text-white/55 mt-1">{o.note}</p> : null}
           <button onClick={() => void useMenteStore.getState().setOrdineStato(o.id, "pronto")} className="text-[10px] mt-2 px-3 py-1 rounded-full bg-emerald-400 text-black font-black">PRONTO</button>
         </div>
       ))}
@@ -91,6 +135,8 @@ export default function App() {
   const visibili = tavoli.filter((t) => (t.salaId || "sala-int") === salaId);
   const tutti = tavoli.flatMap((t) => t.ordini.map((o) => ({ ...o, tavolo: t.nome })));
   const kds = tutti.filter((o) => o.piatto.reparto === kdsFiltro && o.stato !== "pronto");
+  const menuSezioni = groupBySezione(menuLive.map((p) => ({ ...p, piatto: p })));
+  const comandaSezioni = groupBySezione(comanda);
 
   useEffect(() => {
     if (swOnce.current) return;
@@ -110,16 +156,37 @@ export default function App() {
   if (sessione.ruolo === "bar") return <KdsOnly reparto="bar" />;
   if (!canFullApp(sessione.ruolo)) return <LoginScreen />;
 
+  const addPiatto = (p: Piatto) => {
+    setComanda((rows) => {
+      const f = rows.find((r) => r.piatto.id === p.id);
+      return f
+        ? rows.map((r) => (r.piatto.id === p.id ? { ...r, qta: r.qta + 1 } : r))
+        : [...rows, { id: `c-${Date.now()}-${p.id}`, piatto: p, qta: 1, nota: "" }];
+    });
+  };
+
+  const setQta = (id: string, delta: number) => {
+    setComanda((rows) =>
+      rows
+        .map((r) => (r.id === id ? { ...r, qta: r.qta + delta } : r))
+        .filter((r) => r.qta > 0)
+    );
+  };
+
+  const setNota = (id: string, nota: string) => {
+    setComanda((rows) => rows.map((r) => (r.id === id ? { ...r, nota } : r)));
+  };
+
   const inviaComanda = async () => {
     if (!selezionato || !comanda.length) return;
     stampaComanda(selezionato.nome, comanda, sessione.localeNome);
-    for (const r of comanda) await useMenteStore.getState().aggiungiOrdine(selezionato.id, r.piatto, r.qta);
+    for (const r of comanda) await useMenteStore.getState().aggiungiOrdine(selezionato.id, r.piatto, r.qta, r.nota);
     setComanda([]);
   };
 
   const preconto = () => {
     if (!selezionato) return;
-    const righe = selezionato.ordini.map((o) => ({ nome: o.piatto.nome, qta: o.qta, prezzo: o.piatto.prezzo }));
+    const righe = selezionato.ordini.map((o) => ({ nome: o.piatto.nome, qta: o.qta, prezzo: o.piatto.prezzo, nota: o.note }));
     const totale = righe.reduce((s, r) => s + r.prezzo * r.qta, 0);
     apriStampa(ticketHtml({ tipo: "PRECONTO", tavolo: selezionato.nome, ora: oraNow(), locale: sessione.localeNome, operatore: sessione.staffNome, righe, totale }));
   };
@@ -194,7 +261,13 @@ export default function App() {
           <div className="w-full rounded-[28px] glass-strong p-5">
             <div className="flex justify-between"><h2 className="font-black">KDS</h2><button onClick={() => setShowKds(false)}>✕</button></div>
             <div className="flex gap-2 mt-3">{(["cucina", "bar"] as Reparto[]).map((r) => (<button key={r} onClick={() => setKdsFiltro(r)} className={`text-[10px] px-3 py-1 rounded-full ${kdsFiltro === r ? "bg-[#FF1A1A] text-black font-black" : "glass"}`}>{r.toUpperCase()}</button>))}</div>
-            {kds.map((o) => (<div key={o.id} className="glass rounded-2xl p-3 mt-2"><p className="font-black">{o.tavolo} {o.piatto.nome}</p><button onClick={() => void useMenteStore.getState().setOrdineStato(o.id, "pronto")} className="text-[10px] mt-2 px-3 py-1 rounded-full bg-emerald-400 text-black font-black">PRONTO</button></div>))}
+            {kds.map((o) => (
+              <div key={o.id} className="glass rounded-2xl p-3 mt-2">
+                <p className="font-black">{o.tavolo} {o.piatto.nome}</p>
+                {o.note ? <p className="text-xs italic text-white/55 mt-1">{o.note}</p> : null}
+                <button onClick={() => void useMenteStore.getState().setOrdineStato(o.id, "pronto")} className="text-[10px] mt-2 px-3 py-1 rounded-full bg-emerald-400 text-black font-black">PRONTO</button>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -202,19 +275,59 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-end bg-black/70 p-3">
           <div className="w-full max-w-[560px] mx-auto rounded-[28px] glass-strong p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between"><h2 className="font-black">{selezionato.nome}</h2><button onClick={() => setSelezionato(null)}>✕</button></div>
-            <div className="grid grid-cols-2 gap-2 mt-4">{menuLive.map((p) => (
-              <button key={p.id} onClick={() => setComanda((rows) => { const f = rows.find((r) => r.piatto.id === p.id); return f ? rows.map((r) => r.piatto.id === p.id ? { ...r, qta: r.qta + 1 } : r) : [...rows, { id: `c-${Date.now()}`, piatto: p, qta: 1 }]; })} className="text-left p-2.5 rounded-2xl glass flex items-center gap-2">
-                <ProductThumb src={p.img} alt={p.nome} size={40} />
-                <div className="min-w-0">
-                  <p className="text-sm font-bold truncate">{p.nome}</p>
-                  <p className="text-[10px] text-white/40">€{p.prezzo} · {p.categoria}</p>
+            <div className="mt-4 space-y-4">
+              {menuSezioni.map(({ sezione, items }) => (
+                <div key={sezione}>
+                  <p className="text-[10px] tracking-widest text-white/45 font-black mb-2">{sezione.toUpperCase()}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {items.map((p) => (
+                      <button key={p.id} onClick={() => addPiatto(p)} className="text-left p-2.5 rounded-2xl glass flex items-center gap-2">
+                        <ProductThumb src={p.img} alt={p.nome} size={40} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold truncate">{p.nome}</p>
+                          <p className="text-[10px] text-white/40">€{p.prezzo} · {p.categoria}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </button>
-            ))}</div>
-            {comanda.length > 0 && <button onClick={() => void inviaComanda()} className="w-full mt-3 py-3 rounded-full bg-white text-black font-black">INVIA + STAMPA COMANDA</button>}
+              ))}
+            </div>
+            {comanda.length > 0 && (
+              <div className="mt-4 space-y-3">
+                <p className="text-[10px] tracking-widest text-white/45 font-black">BOZZA COMANDA</p>
+                {comandaSezioni.map(({ sezione, items }) => (
+                  <div key={`c-${sezione}`} className="space-y-2">
+                    <p className="text-[9px] text-white/35 font-bold">{sezione}</p>
+                    {items.map((r) => (
+                      <div key={r.id} className="rounded-2xl glass p-3">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setQta(r.id, -1)} className="w-8 h-8 rounded-full bg-white/10 font-black">-</button>
+                          <span className="w-6 text-center font-black">{r.qta}</span>
+                          <button onClick={() => setQta(r.id, 1)} className="w-8 h-8 rounded-full bg-white/10 font-black">+</button>
+                          <p className="flex-1 text-sm font-bold truncate">{r.piatto.nome}</p>
+                        </div>
+                        <input
+                          value={r.nota || ""}
+                          onChange={(e) => setNota(r.id, e.target.value)}
+                          placeholder="nota cucina: senza cipolla, al sangue…"
+                          className="mt-2 w-full rounded-xl bg-black/40 border border-white/10 px-3 py-2 text-xs text-white placeholder:text-white/30 outline-none"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                <button onClick={() => void inviaComanda()} className="w-full py-3 rounded-full bg-white text-black font-black">INVIA + STAMPA COMANDA</button>
+              </div>
+            )}
             {selezionato.ordini.length > 0 && (
               <div className="mt-3 space-y-2">
-                {selezionato.ordini.map((o) => <p key={o.id} className="text-sm text-white/60">{o.piatto.nome} x{o.qta}</p>)}
+                {selezionato.ordini.map((o) => (
+                  <div key={o.id}>
+                    <p className="text-sm text-white/60">{o.piatto.nome} x{o.qta}</p>
+                    {o.note ? <p className="text-xs italic text-white/40">{o.note}</p> : null}
+                  </div>
+                ))}
                 <div className="flex gap-2">{(["contanti", "carta", "satispay"] as Pagamento[]).map((p) => (
                   <button key={p} onClick={() => setPay(p)} className={`flex-1 py-2 rounded-full text-[10px] font-black ${pay === p ? "bg-[#FF1A1A] text-black" : "glass"}`}>{p}</button>
                 ))}</div>
