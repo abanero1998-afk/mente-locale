@@ -5,6 +5,7 @@ import { persist } from "zustand/middleware";
 import type { Postazione } from "./types";
 import {
   createLocale as createLocaleTenant,
+  ensureSeededLocali,
   findStaffByPin,
   getLocale,
   listLocali,
@@ -118,6 +119,7 @@ export const useAuth = create<AuthState>()(
         lastCreatedLocaleId: s.lastCreatedLocaleId,
       }),
       onRehydrateStorage: () => (state) => {
+        ensureSeededLocali();
         const id = state?.sessione?.localeId;
         if (id) activate(id);
       },
