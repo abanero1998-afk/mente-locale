@@ -46,3 +46,28 @@ export function downloadAslFile(csv: string) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+
+export function buildTempOnlyCsv(logTemp: LogTemp[]) {
+  const fmt = (ts: number) => new Date(ts).toLocaleString("it-IT");
+  const lines = [
+    "MENTE LOCALE — LOG TEMPERATURE FRIGHI",
+    `Generato,${new Date().toLocaleString("it-IT")}`,
+    "",
+    "Frigo,Temp,Quando,Operatore,Id",
+    ...logTemp.map((t) => [t.nome, t.temp, fmt(t.ts), t.operatore, t.id].join(",")),
+  ];
+  return lines.join("\n");
+}
+
+export function downloadTempLog(csv: string) {
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `temperature-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
