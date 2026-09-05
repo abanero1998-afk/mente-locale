@@ -225,7 +225,9 @@ export const TESTEMATTE_MENU: Piatto[] = [
   },
 ];
 
-/** A8010V @ LAN — ONLY for locale id testematte. Do not reuse for other locali. */
+/** A8010V @ LAN — ONLY for locale id testematte. Do not reuse for other locali.
+ * RT = 192.168.1.60:1723; bridge PC fondatore = http://192.168.1.61:8787 (IP diversi!).
+ */
 export const TESTEMATTE_HARDWARE = {
   model: "A8010V",
   vendor: "3i_xonxoff" as const,
@@ -236,6 +238,7 @@ export const TESTEMATTE_HARDWARE = {
   devid: "A8010V",
   timeoutMs: 10000,
   useHttps: false,
+  bridgeUrl: "http://192.168.1.61:8787",
 };
 
 /** RT patch for FiscalBundle.rt when hardware is empty. */
@@ -250,10 +253,16 @@ export function testeMatteRtSeed() {
     devid: h.devid,
     timeoutMs: h.timeoutMs,
     useHttps: h.useHttps,
+    bridgeUrl: h.bridgeUrl,
   };
 }
 
 export function isRtHardwareEmpty(rt: { host?: string } | null | undefined): boolean {
   return !(rt?.host || "").trim();
+}
+
+/** True if bridge URL missing — need PC bridge for Vercel/LAN. */
+export function isBridgeUrlEmpty(rt: { bridgeUrl?: string } | null | undefined): boolean {
+  return !(rt?.bridgeUrl || "").trim();
 }
 
