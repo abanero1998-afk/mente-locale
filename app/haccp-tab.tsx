@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMenteStore } from "@/lib/store";
 import { useLocaleStore } from "@/lib/locale-store";
 import type { HaccpView, PrinterMode } from "@/lib/types";
+import { playUi } from "@/lib/sounds";
 import { buildAslCsv, buildTempOnlyCsv, downloadAslFile, downloadTempLog } from "@/lib/haccp-export";
 
 const inp = "w-full p-3 rounded-xl bg-black/30 border border-white/10 mt-2";
@@ -12,6 +13,7 @@ const CARDS: { id: HaccpView; title: string; sub: string; bg: string; icon: stri
   { id: "fornitori", title: "Fornitori", sub: "Lista e gestione fornitori", bg: "#3B82F6", icon: "🚚" },
   { id: "pulizia", title: "Pulizia", sub: "Checklist e scadenze", bg: "#22C55E", icon: "🧹" },
   { id: "scadenze", title: "Scadenze", sub: "Controllo prodotti", bg: "#EF4444", icon: "📅" },
+  { id: "magazzino", title: "Magazzino", sub: "Articoli e scorte", bg: "#F97316", icon: "📦" },
   { id: "frighi", title: "Frigoriferi", sub: "Temperatura e log", bg: "#3B82F6", icon: "❄️" },
   { id: "olio", title: "Controllo Olio", sub: "Qualità e filtri", bg: "#EAB308", icon: "🛢️" },
   { id: "tracciabilita", title: "Tracciabilità", sub: "Lotti e prodotti", bg: "#8B5CF6", icon: "🔢" },
@@ -47,6 +49,17 @@ export function HaccpTab() {
   const [abForm, setAbForm] = useState({ prodotto: "", tInizio: "68", tFine: "3", operatore: "Cucina" });
   const [eti, setEti] = useState({ prodotto: "", produzione: "", scadenza: "", lotto: "", operatore: "", note: "Conservare in frigo 0-4°C", qta: "1" });
   const [msg, setMsg] = useState("");
+  const [magForm, setMagForm] = useState({ nome: "", qta: "", unita: "kg", soglia: "1" });
+
+  useEffect(() => {
+    const onNav = (ev: Event) => {
+      const kind = (ev as CustomEvent<{ kind?: string }>).detail?.kind || "";
+      if (kind === "magazzino") setView("magazzino");
+      if (kind === "haccp") setView("hub");
+    };
+    window.addEventListener("ml-ia-nav", onNav as EventListener);
+    return () => window.removeEventListener("ml-ia-nav", onNav as EventListener);
+  }, []);
 
   const stampaEti = async () => {
     if (eti.prodotto) {
@@ -132,6 +145,64 @@ export function HaccpTab() {
         {magazzino.filter((m) => m.qta < m.soglia).map((m) => (
           <div key={m.id} className="glass rounded-2xl p-3 mb-2 text-sm text-[#FF6B6B]">{m.nome} sotto scorta ({m.qta} {m.unita})</div>
         ))}
+      </div>
+    );
+  }
+
+
+  if (view === "magazzino") {
+    return (
+      <div>
+        <Back onClick={() => setView("hub")} title="MAGAZZINO" />
+        {magazzino.map((m) => (
+          <div key={m.id} className="glass rounded-2xl p-3 mb-2 flex justify-between items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <input
+                className="bg-transparent font-bold w-full"
+                value={m.nome}
+                onChange={(e) => useMenteStore.getState().aggiornaMagazzino(m.id, { nome: e.target.value })}
+              />
+              <p className={`text-[10px] ${m.qta < m.soglia ? "text-[#FF6B6B]" : "text-white/40"}`}>
+                {m.qta} {m.unita} · soglia {m.soglia}
+              </p>
+            </div>
+            <div className="flex gap-1 items-center">
+              <input
+                type="number"
+                className="w-16 bg-black/30 rounded-lg p-2 text-xs"
+                value={m.qta}
+                onChange={(e) => useMenteStore.getState().aggiornaMagazzino(m.id, { qta: Number(e.target.value) || 0 })}
+              />
+              <button
+                onClick={() => {
+                  playUi("tap");
+                  useMenteStore.getState().deleteMag(m.id);
+                }}
+                className="text-[10px] text-[#FF6B6B] px-2"
+              >
+                X
+              </button>
+            </div>
+          </div>
+        ))}
+        <p className="text-[10px] tracking-widest text-white/45 font-black mt-4 mb-1">NUOVO ARTICOLO</p>
+        <input className={inp} placeholder="Nome" value={magForm.nome} onChange={(e) => setMagForm({ ...magForm, nome: e.target.value })} />
+        <div className="grid grid-cols-3 gap-2">
+          <input className={inp} placeholder="Qta" value={magForm.qta} onChange={(e) => setMagForm({ ...magForm, qta: e.target.value })} />
+          <input className={inp} placeholder="Unità" value={magForm.unita} onChange={(e) => setMagForm({ ...magForm, unita: e.target.value })} />
+          <input className={inp} placeholder="Soglia" value={magForm.soglia} onChange={(e) => setMagForm({ ...magForm, soglia: e.target.value })} />
+        </div>
+        <button
+          onClick={() => {
+            if (!magForm.nome.trim()) return;
+            playUi("success");
+            useMenteStore.getState().aggiungiMagazzino(magForm);
+            setMagForm({ nome: "", qta: "", unita: "kg", soglia: "1" });
+          }}
+          className="w-full mt-3 py-3 rounded-full bg-white text-black font-black"
+        >
+          + AGGIUNGI ARTICOLO
+        </button>
       </div>
     );
   }
