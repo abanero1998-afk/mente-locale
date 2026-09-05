@@ -183,6 +183,24 @@ export default function App() {
     if (live) setSelezionato(live);
   }, [tavoli, selezionato?.id]);
 
+  /** Navigazione da chip IA Socio (bolla / mini-chat). */
+  useEffect(() => {
+    const onNav = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ kind?: string }>).detail || {};
+      const kind = detail.kind || "";
+      if (kind === "cassa") setTab("cassa");
+      else if (kind === "menu") setTab("menu");
+      else if (kind === "haccp" || kind === "magazzino") setTab("haccp");
+      else if (kind === "tavolo" || kind === "prenotazioni") setTab("tavoli");
+      else if (kind === "kds") {
+        setShowKds(true);
+        setTab("tavoli");
+      }
+    };
+    window.addEventListener("ml-ia-nav", onNav as EventListener);
+    return () => window.removeEventListener("ml-ia-nav", onNav as EventListener);
+  }, []);
+
   if (!sessione) return <LoginScreen />;
   if (sessione.ruolo === "cucina") return <KdsOnly reparto="cucina" />;
   if (sessione.ruolo === "bar") return <KdsOnly reparto="bar" />;
