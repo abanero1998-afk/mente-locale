@@ -119,10 +119,52 @@ export function listLocali(): LocaleTenant[] {
   return sortedLocali();
 }
 
-export function getLocale(id: string): LocaleTenant | undefined {
+/** Normalize for fuzzy locale lookup: trim, lower, strip accents/spaces/non-alnum. */
+function normalizeLocaleKey(input: string): string {
+  return (input || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+/**
+ * Resolve a locale by id, slugified name, or fuzzy name match.
+ * Prefer this over exact-id-only lookup so "Teste Matte" / "teste matte" work.
+ */
+export function resolveLocale(input: string): LocaleTenant | undefined {
   ensureSeededLocali();
-  const lid = (id || "").trim().toLowerCase();
-  return readRegistry().locali.find((l) => l.id === lid);
+  const raw = (input || "").trim();
+  if (!raw) return undefined;
+  const locali = readRegistry().locali;
+  const norm = normalizeLocaleKey(raw);
+  const rawLower = raw.toLowerCase();
+  const inputSlug = slugifyLocaleId(raw);
+
+  // Exact id (spaces kept, lower+trim) for safety
+  const byRawId = locali.find((l) => l.id === rawLower || l.id === raw);
+  if (byRawId) return byRawId;
+
+  return locali.find((l) => {
+    const nomeSlug = slugifyLocaleId(l.nome);
+    if (l.id === norm) return true;
+    if (nomeSlug === norm) return true;
+    if (nomeSlug === inputSlug) return true;
+    // Meaningful substring: nome includes a substantial part of input (or vice versa)
+    const nomeLower = (l.nome || "").toLowerCase();
+    if (norm.length >= 4 && (normalizeLocaleKey(l.nome).includes(norm) || norm.includes(normalizeLocaleKey(l.nome)))) {
+      return true;
+    }
+    if (rawLower.length >= 4 && (nomeLower.includes(rawLower) || rawLower.includes(nomeLower))) {
+      return true;
+    }
+    return false;
+  });
+}
+
+export function getLocale(id: string): LocaleTenant | undefined {
+  return resolveLocale(id);
 }
 
 export function getStaffForLocale(localeId: string): TenantStaff[] {
