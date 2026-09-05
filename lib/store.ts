@@ -23,18 +23,17 @@ import { codaAll, codaClear, codaPut } from "./idb-queue";
 import { deviceId, listenLocal, listenRemote, publishLocal, publishRemote, supabaseConfigured } from "./sync";
 
 function makeTavoli(): Tavolo[] {
-  const stati: Tavolo["stato"][] = ["libero", "libero", "occupato", "prenotato", "libero"];
   return Array.from({ length: 20 }, (_, i) => ({
     id: i + 1,
     nome: `T${String(i + 1).padStart(2, "0")}`,
     salaId: i < 12 ? "sala-int" : "sala-est",
     posti: [2, 2, 4, 4, 6, 8][i % 6],
-    stato: stati[i % 5],
+    stato: "libero" as const,
     x: 10 + (i % 5) * 18 + 5,
     y: 14 + Math.floor(i / 5) * 22,
-    clienti: [2, 2, 4, 3, 5, 6][i % 6],
-    cameriere: ["Luca", "Sara", "Marco"][i % 3],
-    tempo: i === 2 ? 73 : (i * 7) % 60,
+    clienti: 0,
+    cameriere: "",
+    tempo: 0,
     ordini: [],
     animazione: "none" as const,
   }));
@@ -169,10 +168,7 @@ export const useMenteStore = create<Store>()(
       pulizie: PULIZIA_SEED,
       printer: PRINTER_SEED,
       prenotazioni: [{ id: "p1", initials: "MR", nome: "Mario Rossi", persone: 4, tavolo: "T03", quando: "Oggi 20:30", stato: "confermata", fonte: "telefono" }],
-      scontrini: [
-        { id: "s1", tavoloId: 4, totale: 86, minuti: 42, ts: Date.now() - 3600000 },
-        { id: "s2", tavoloId: 7, totale: 124, minuti: 51, ts: Date.now() - 1800000 },
-      ],
+      scontrini: [],
       avvisi: [],
       codaOffline: [],
       online: typeof navigator === "undefined" ? true : navigator.onLine,
