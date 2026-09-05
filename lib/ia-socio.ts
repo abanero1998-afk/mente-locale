@@ -2,8 +2,15 @@
 
 import { useMenteStore } from "./store";
 import { deviceId, publishLocal, publishRemote, supabaseConfigured } from "./sync";
+import { getCurrentLocaleId } from "./scoped-storage";
+import { getLocale } from "./tenants";
 
-const WA_TO = process.env.NEXT_PUBLIC_SOCIO_WA || "+3444106229";
+function waSocioTo() {
+  const loc = getLocale(getCurrentLocaleId());
+  const fromTenant = (loc?.settings?.waSocio || "").trim();
+  if (fromTenant) return fromTenant;
+  return process.env.NEXT_PUBLIC_SOCIO_WA || "+3444106229";
+}
 const SLOT_HOURS = [17, 19, 21, 23];
 const KDS_STALE_MS = 20 * 60 * 1000;
 const PULIZIA_STALE_MS = 12 * 60 * 60 * 1000;
@@ -52,7 +59,7 @@ export async function avvisaSocio(msg: string) {
       await fetch("/api/whatsapp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: WA_TO, msg }),
+        body: JSON.stringify({ to: waSocioTo(), msg }),
       });
     } catch {}
   }
