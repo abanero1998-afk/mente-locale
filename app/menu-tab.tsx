@@ -106,6 +106,9 @@ export function ProdottoRow({ p, onDelete }: { p: Piatto; onDelete: (id: string)
           <ProductThumb src={p.img} alt={p.nome} size={52} />
           <div className="min-w-0">
             <p className="font-bold truncate">{p.nome}</p>
+            {p.descrizione ? (
+              <p className="text-[10px] text-white/40 line-clamp-2">{p.descrizione}</p>
+            ) : null}
             <p className="text-[11px] text-white/50">EUR {p.prezzo.toFixed(2)}</p>
           </div>
         </div>
