@@ -98,22 +98,23 @@ export function LoginScreen() {
                 ))}
               </div>
             )}
-            {getLocale("testematte") && (
-              <button
-                type="button"
-                onClick={() => {
-                  playUi("nav");
-                  setLocaleId("testematte");
-                  if (pin.trim()) {
-                    playUi("success");
-                    useAuth.getState().login("testematte", pin);
-                  }
-                }}
-                className="w-full py-3 rounded-full bg-white/10 border border-[#FF1A1A]/40 text-[#FF1A1A] font-black text-sm"
-              >
-                Entra in Teste Matte
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                playUi("nav");
+                ensureSeededLocali();
+                setLocaleId("testematte");
+                setSeedTick((n) => n + 1);
+                // Do not auto-fill PIN — security. If PIN already typed, try login.
+                if (pin.trim()) {
+                  playUi("success");
+                  useAuth.getState().login("testematte", pin);
+                }
+              }}
+              className="w-full py-3 rounded-full bg-white/10 border border-[#FF1A1A]/40 text-[#FF1A1A] font-black text-sm"
+            >
+              Entra in Teste Matte
+            </button>
             <input
               value={localeId}
               onChange={(e) => setLocaleId(e.target.value)}
@@ -135,6 +136,9 @@ export function LoginScreen() {
             >
               ENTRA
             </button>
+            <p className="text-[10px] text-white/30 text-center">
+              Se non vedi la lista: hard refresh, poi Entra in Teste Matte + PIN 0000
+            </p>
             <p className="text-[10px] text-white/30 text-center">
               PIN validi solo per il locale scelto (titolare + demo {DEMO_STAFF_PINS.map((d) => d.pin).join(" / ")})
             </p>
