@@ -1,12 +1,20 @@
 import type { SyncEvent } from "./types";
+import { getCurrentLocaleId } from "./scoped-storage";
 
 function localeId() {
+  const cur = getCurrentLocaleId();
+  if (cur) return cur;
   if (typeof window === "undefined") return "mentelocale";
   try {
-    const raw = localStorage.getItem("ml-auth-v1");
-    if (!raw) return "mentelocale";
-    const parsed = JSON.parse(raw);
-    return parsed?.state?.localeId || parsed?.state?.sessione?.localeId || "mentelocale";
+    // Prefer v2 auth session; fall back to legacy v1
+    for (const key of ["ml-auth-v2", "ml-auth-v1"]) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const id = parsed?.state?.sessione?.localeId || parsed?.state?.localeId;
+      if (id) return String(id);
+    }
+    return "mentelocale";
   } catch {
     return "mentelocale";
   }
@@ -96,8 +104,49 @@ async function getSupabase(): Promise<ClientLike | null> {
   return sbPromise;
 }
 
-let local: BroadcastChannel | null =
-  typeof window !== "undefined" && "BroadcastChannel" in window ? new BroadcastChannel(channelName()) : null;
+let local: BroadcastChannel | null = null;
+let localHandlers: Array<(e: SyncEvent) => void> = [];
+let onRemoteEvent: ((e: SyncEvent) => void) | null = null;
+
+function wireLocalChannel() {
+  if (typeof window === "undefined" || !("BroadcastChannel" in window)) {
+    local = null;
+    return;
+  }
+  try {
+    local?.close();
+  } catch {}
+  local = new BroadcastChannel(channelName());
+  local.addEventListener("message", (ev: MessageEvent<SyncEvent>) => {
+    if (!ev.data?.deviceId || ev.data.deviceId === deviceId) return;
+    markLocalMsg();
+    for (let i = 0; i < localHandlers.length; i++) {
+      try {
+        localHandlers[i](ev.data);
+      } catch {}
+    }
+  });
+}
+
+if (typeof window !== "undefined") wireLocalChannel();
+
+/** Rebuild BroadcastChannel after locale login/switch so presence stays locale-scoped. */
+export function rebindSyncChannel() {
+  wireLocalChannel();
+  // Drop peer list from previous locale (peers may not be init yet at parse — safe at call time)
+  try {
+    const keys = Object.keys(peers);
+    for (let i = 0; i < keys.length; i++) delete peers[keys[i]];
+    notifyPresence();
+  } catch {}
+  try {
+    remoteUnsub?.();
+  } catch {}
+  remoteUnsub = null;
+  if (onRemoteEvent) {
+    void listenRemote(onRemoteEvent);
+  }
+}
 
 export function publishLocal(event: SyncEvent) {
   try {
@@ -107,14 +156,15 @@ export function publishLocal(event: SyncEvent) {
 }
 
 export function listenLocal(onEvent: (e: SyncEvent) => void) {
-  if (!local) return () => {};
-  const handler = (ev: MessageEvent<SyncEvent>) => {
-    if (!ev.data?.deviceId || ev.data.deviceId === deviceId) return;
-    markLocalMsg();
-    onEvent(ev.data);
+  localHandlers.push(onEvent);
+  return () => {
+    localHandlers = localHandlers.filter((h) => h !== onEvent);
   };
-  local.addEventListener("message", handler);
-  return () => local!.removeEventListener("message", handler);
+}
+
+/** Remember remote handler so locale rebind can resubscribe. */
+export function setRemoteEventHandler(fn: ((e: SyncEvent) => void) | null) {
+  onRemoteEvent = fn;
 }
 
 export async function publishRemote(event: SyncEvent) {
