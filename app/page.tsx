@@ -19,7 +19,7 @@ import { MenuTab, ProductThumb } from "./menu-tab";
 import { HaccpTab } from "./haccp-tab";
 import { CassaTab } from "./cassa-tab";
 import { LoginScreen } from "./login-screen";
-import { SyncHeaderBadge } from "./sync-panel";
+import { SyncHeaderBadge } from "./sync-panel"; /* pay+sync+reports §5-7 */
 
 type Tab = "dashboard" | "tavoli" | "menu" | "haccp" | "cassa";
 const MENU_FALLBACK: Piatto[] = [
