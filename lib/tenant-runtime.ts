@@ -13,6 +13,7 @@ import {
   TESTEMATTE_MENU_SEED_FLAG,
   TESTEMATTE_MENU_SEED_VERSION,
   isRtHardwareEmpty,
+  isBridgeUrlEmpty,
   testeMatteRtSeed,
   TESTEMATTE_HARDWARE,
 } from "./locale-seeds/testematte";
@@ -41,19 +42,31 @@ export function ensureTesteMatteMenu() {
   }
 }
 
-/** Prefill A8010V / 3i_xonxoff ONLY for testematte when RT host empty. Never other locali. */
+/** Prefill A8010V / 3i_xonxoff ONLY for testematte when RT host empty. Never other locali.
+ * Se host gia presente ma bridgeUrl vuoto, imposta solo bridgeUrl (PC .61) senza toccare host RT.
+ */
 export function ensureTesteMatteHardware() {
   if (typeof localStorage === "undefined") return;
   if (getCurrentLocaleId() !== TESTEMATTE_LOCALE_ID) return;
 
   const fiscal = useFiscal.getState();
   const tenantRt = getLocale(TESTEMATTE_LOCALE_ID)?.settings?.fiscal?.rt;
-  // Respect any existing host (runtime or tenant) — do not overwrite titolare edits.
-  if (!isRtHardwareEmpty(fiscal.rt) || !isRtHardwareEmpty(tenantRt)) return;
+  const hostEmpty = isRtHardwareEmpty(fiscal.rt) && isRtHardwareEmpty(tenantRt);
+  const bridgeEmpty =
+    isBridgeUrlEmpty(fiscal.rt) && isBridgeUrlEmpty(tenantRt);
 
-  const seed = { ...testeMatteRtSeed(), hardwareModel: TESTEMATTE_HARDWARE.model };
-  useFiscal.getState().setRt(seed);
-  useFiscal.getState().syncToTenant();
+  if (hostEmpty) {
+    const seed = { ...testeMatteRtSeed(), hardwareModel: TESTEMATTE_HARDWARE.model };
+    useFiscal.getState().setRt(seed);
+    useFiscal.getState().syncToTenant();
+    return;
+  }
+
+  // Host gia configurato: solo bridge URL se mancante (non sovrascrivere edit titolare).
+  if (bridgeEmpty && TESTEMATTE_HARDWARE.bridgeUrl) {
+    useFiscal.getState().setRt({ bridgeUrl: TESTEMATTE_HARDWARE.bridgeUrl });
+    useFiscal.getState().syncToTenant();
+  }
 }
 
 /** Switch all persisted stores to a locale namespace and rehydrate. */
