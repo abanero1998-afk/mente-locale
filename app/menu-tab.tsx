@@ -8,7 +8,55 @@ const PLACEHOLDER_IMG =
   "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop";
 
 function isImgUrl(v: string) {
-  return typeof v === "string" && (v.startsWith("http://") || v.startsWith("https://") || v.startsWith("/"));
+  return (
+    typeof v === "string" &&
+    (v.startsWith("http://") ||
+      v.startsWith("https://") ||
+      v.startsWith("/") ||
+      v.startsWith("data:image/"))
+  );
+}
+
+const MAX_DATA_URL_CHARS = 900_000; // ~warn if huge (~0.9MB)
+
+/** Compress image file to JPEG data URL (max edge ~800px, quality ~0.7). */
+function compressImageFile(file: File): Promise<{ dataUrl: string; warned: boolean }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Lettura file fallita"));
+    reader.onload = () => {
+      const src = String(reader.result || "");
+      const img = new Image();
+      img.onload = () => {
+        const maxEdge = 800;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxEdge || h > maxEdge) {
+          if (w >= h) {
+            h = Math.round((h * maxEdge) / w);
+            w = maxEdge;
+          } else {
+            w = Math.round((w * maxEdge) / h);
+            h = maxEdge;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, w);
+        canvas.height = Math.max(1, h);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas non disponibile"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+        resolve({ dataUrl, warned: dataUrl.length > MAX_DATA_URL_CHARS });
+      };
+      img.onerror = () => reject(new Error("Immagine non valida"));
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 export function ProductThumb({ src, alt, size = 48 }: { src: string; alt: string; size?: number }) {
@@ -97,6 +145,9 @@ export function MenuTab({ onAdd }: { onAdd?: () => void }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [imgWarn, setImgWarn] = useState("");
+  const [imgBusy, setImgBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const bySection = useMemo(() => {
     const sections: Record<string, Piatto[]> = {};
@@ -111,8 +162,32 @@ export function MenuTab({ onAdd }: { onAdd?: () => void }) {
 
   const openAdd = () => {
     setForm(EMPTY_FORM);
+    setImgWarn("");
     setShowForm(true);
     onAdd?.();
+  };
+
+  const onPickPhoto = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setImgWarn("Seleziona un file immagine.");
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      setImgWarn("File troppo grande (>12MB). Comprimi o usa un URL.");
+      return;
+    }
+    setImgBusy(true);
+    setImgWarn("");
+    try {
+      const { dataUrl, warned } = await compressImageFile(file);
+      setForm((f) => ({ ...f, img: dataUrl }));
+      if (warned) setImgWarn("Immagine ancora pesante: ok offline, ma può rallentare il sync.");
+    } catch {
+      setImgWarn("Compressione fallita. Prova un altro file o un URL.");
+    } finally {
+      setImgBusy(false);
+    }
   };
 
   const salva = async () => {
@@ -236,21 +311,62 @@ export function MenuTab({ onAdd }: { onAdd?: () => void }) {
                 <option value="bar">Bar</option>
               </select>
             </label>
-            <label className="block space-y-1">
-              <span className="text-[10px] text-white/40 tracking-widest">URL IMMAGINE</span>
-              <input
-                value={form.img}
-                onChange={(e) => setForm((f) => ({ ...f, img: e.target.value }))}
-                className="w-full rounded-2xl glass px-4 py-3 bg-transparent outline-none text-[12px]"
-                placeholder="https://images.unsplash.com/..."
-              />
-            </label>
-            {form.img.trim() && isImgUrl(form.img.trim()) && (
-              <div className="flex items-center gap-3 pt-1">
-                <ProductThumb src={form.img.trim()} alt="Anteprima" size={64} />
-                <span className="text-[10px] text-white/40">Anteprima</span>
+            <div className="space-y-2">
+              <span className="text-[10px] text-white/40 tracking-widest">FOTO PRODOTTO</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={imgBusy}
+                  onClick={() => fileRef.current?.click()}
+                  className="flex-1 py-3 rounded-2xl glass font-black text-xs disabled:opacity-40"
+                >
+                  {imgBusy ? "COMPRIMO…" : "📷 CAMERA / GALLERIA"}
+                </button>
+                {form.img.startsWith("data:image/") && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((f) => ({ ...f, img: "" }));
+                      setImgWarn("");
+                    }}
+                    className="px-3 rounded-2xl glass text-xs text-white/50"
+                  >
+                    Rimuovi
+                  </button>
+                )}
               </div>
-            )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  void onPickPhoto(f);
+                  e.target.value = "";
+                }}
+              />
+              <label className="block space-y-1">
+                <span className="text-[10px] text-white/40 tracking-widest">OPPURE URL IMMAGINE</span>
+                <input
+                  value={form.img.startsWith("data:image/") ? "" : form.img}
+                  onChange={(e) => {
+                    setImgWarn("");
+                    setForm((f) => ({ ...f, img: e.target.value }));
+                  }}
+                  className="w-full rounded-2xl glass px-4 py-3 bg-transparent outline-none text-[12px]"
+                  placeholder="https://images.unsplash.com/..."
+                />
+              </label>
+              {imgWarn && <p className="text-[11px] text-amber-300">{imgWarn}</p>}
+              {form.img.trim() && isImgUrl(form.img.trim()) && (
+                <div className="flex items-center gap-3 pt-1">
+                  <ProductThumb src={form.img.trim()} alt="Anteprima" size={72} />
+                  <span className="text-[10px] text-white/40">Anteprima (offline ok)</span>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => {
                 void salva();
