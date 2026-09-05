@@ -229,7 +229,6 @@ export default function App() {
 
   const inviaComanda = async () => {
     if (!selezionato || !comanda.length) return;
-    stampaComanda(selezionato.nome, comanda, sessione.localeNome);
     for (const r of comanda) await useMenteStore.getState().aggiungiOrdine(selezionato.id, r.piatto, r.qta, r.nota);
     setComanda([]);
   };
@@ -592,7 +591,7 @@ export default function App() {
                     ))}
                   </div>
                 ))}
-                <button onClick={() => void inviaComanda()} className="w-full py-3 rounded-full bg-white text-black font-black">INVIA + STAMPA COMANDA</button>
+                <button onClick={() => void inviaComanda()} className="w-full py-3 rounded-full bg-white text-black font-black">INVIA A KDS</button>
               </div>
             )}
             {selezionato.ordini.length > 0 && (() => {
