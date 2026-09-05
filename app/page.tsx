@@ -633,6 +633,9 @@ export default function App() {
                         <ProductThumb src={p.img} alt={p.nome} size={40} />
                         <div className="min-w-0">
                           <p className="text-sm font-bold truncate">{p.nome}</p>
+                          {p.descrizione ? (
+                            <p className="text-[9px] text-white/35 line-clamp-2">{p.descrizione}</p>
+                          ) : null}
                           <p className="text-[10px] text-white/40">€{p.prezzo} · {p.categoria}</p>
                         </div>
                       </button>
