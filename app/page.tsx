@@ -4,14 +4,22 @@ import { useEffect, useRef, useState } from "react";
 import { useMenteStore, wireSync } from "@/lib/store";
 import { useLocaleStore } from "@/lib/locale-store";
 import { canFullApp, useAuth } from "@/lib/auth";
-import { useCassa, type Pagamento } from "@/lib/cassa";
+import { useCassa, type Pagamento, type SplitParte } from "@/lib/cassa";
 import { kpiOggi, orariPunta, topProdotti } from "@/lib/dashboard-stats";
 import { apriStampa, ticketHtml } from "@/lib/ticket";
+import {
+  buildVenditeCsv,
+  downloadCsv,
+  filterScontriniPeriodo,
+  stampaReportPeriodo,
+  type Periodo,
+} from "@/lib/report-export";
 import { SEZIONI_MENU, type Piatto, type Reparto, type RigaComanda, type Tavolo } from "@/lib/types";
 import { MenuTab, ProductThumb } from "./menu-tab";
 import { HaccpTab } from "./haccp-tab";
 import { CassaTab } from "./cassa-tab";
 import { LoginScreen } from "./login-screen";
+import { SyncHeaderBadge } from "./sync-panel";
 
 type Tab = "dashboard" | "tavoli" | "menu" | "haccp" | "cassa";
 const MENU_FALLBACK: Piatto[] = [
@@ -130,6 +138,22 @@ export default function App() {
   const [selezionato, setSelezionato] = useState<Tavolo | null>(null);
   const [comanda, setComanda] = useState<RigaComanda[]>([]);
   const [pay, setPay] = useState<Pagamento>("contanti");
+  const [scontoMode, setScontoMode] = useState<"euro" | "pct">("euro");
+  const [scontoVal, setScontoVal] = useState("0");
+  const [mancia, setMancia] = useState("0");
+  const [manciaCustom, setManciaCustom] = useState(false);
+  const [splitMode, setSplitMode] = useState<"none" | "equal" | "custom">("none");
+  const [splitN, setSplitN] = useState(2);
+  const [splitCustom, setSplitCustom] = useState<SplitParte[]>([
+    { label: "Parte 1", importo: 0, pagamento: "contanti" },
+    { label: "Parte 2", importo: 0, pagamento: "carta" },
+  ]);
+  const [mistoContanti, setMistoContanti] = useState("");
+  const [mistoCarta, setMistoCarta] = useState("");
+  const [posRef, setPosRef] = useState("");
+  const [noteSc, setNoteSc] = useState("");
+  const [payMsg, setPayMsg] = useState("");
+  const [dashPeriodo, setDashPeriodo] = useState<Periodo>("oggi");
   const [showKds, setShowKds] = useState(false);
   const [kdsFiltro, setKdsFiltro] = useState<Reparto>("cucina");
   const swOnce = useRef(false);
@@ -186,32 +210,138 @@ export default function App() {
     setComanda([]);
   };
 
+  const calcPay = () => {
+    if (!selezionato) {
+      return { righe: [] as { nome: string; qta: number; prezzo: number; note?: string }[], subtotale: 0, sconto: 0, scontoPct: 0, manciaN: 0, totale: 0 };
+    }
+    const righe = selezionato.ordini.map((o) => ({
+      nome: o.piatto.nome,
+      qta: o.qta,
+      prezzo: o.piatto.prezzo,
+      note: o.note,
+    }));
+    const subtotale = righe.reduce((s, r) => s + r.prezzo * r.qta, 0);
+    const raw = Number(scontoVal) || 0;
+    let sconto = 0;
+    let scontoPct = 0;
+    if (scontoMode === "pct") {
+      scontoPct = Math.min(100, Math.max(0, raw));
+      sconto = (subtotale * scontoPct) / 100;
+    } else {
+      sconto = Math.min(subtotale, Math.max(0, raw));
+      scontoPct = subtotale > 0 ? (sconto / subtotale) * 100 : 0;
+    }
+    const after = Math.max(0, subtotale - sconto);
+    const manciaN = Math.max(0, Number(mancia) || 0);
+    const totale = after + manciaN;
+    return { righe, subtotale, sconto, scontoPct, manciaN, totale };
+  };
+
+  const buildSplitLines = (totale: number): SplitParte[] | undefined => {
+    if (splitMode === "none") return undefined;
+    if (splitMode === "equal") {
+      const n = Math.max(2, Math.min(12, splitN || 2));
+      const each = Math.round((totale / n) * 100) / 100;
+      const parts: SplitParte[] = [];
+      let acc = 0;
+      for (let i = 0; i < n; i++) {
+        const importo = i === n - 1 ? Math.round((totale - acc) * 100) / 100 : each;
+        acc += importo;
+        parts.push({ label: `Parte ${i + 1}`, importo, pagamento: pay });
+      }
+      return parts;
+    }
+    return splitCustom.slice(0, Math.max(2, Math.min(4, splitCustom.length)));
+  };
+
+  const ticketOpts = (tipo: "PRECONTO" | "SCONTRINO") => {
+    const { righe, subtotale, sconto, manciaN, totale } = calcPay();
+    const split = buildSplitLines(totale);
+    return {
+      tipo,
+      tavolo: selezionato!.nome,
+      ora: oraNow(),
+      locale: sessione.localeNome,
+      operatore: sessione.staffNome,
+      righe: righe.map((r) => ({ nome: r.nome, qta: r.qta, prezzo: r.prezzo, nota: r.note })),
+      subtotale,
+      sconto,
+      mancia: manciaN,
+      totale,
+      pagamento: pay,
+      splitLines: split?.map((s) => ({ label: s.label, importo: s.importo, pagamento: s.pagamento })),
+      riferimentoPos: posRef.trim() || undefined,
+      noteFiscali: noteSc.trim() || undefined,
+    };
+  };
+
+  const resetPayUi = () => {
+    setPay("contanti");
+    setScontoVal("0");
+    setScontoMode("euro");
+    setMancia("0");
+    setManciaCustom(false);
+    setSplitMode("none");
+    setSplitN(2);
+    setMistoContanti("");
+    setMistoCarta("");
+    setPosRef("");
+    setNoteSc("");
+    setPayMsg("");
+  };
+
   const preconto = () => {
     if (!selezionato) return;
-    const righe = selezionato.ordini.map((o) => ({ nome: o.piatto.nome, qta: o.qta, prezzo: o.piatto.prezzo, nota: o.note }));
-    const totale = righe.reduce((s, r) => s + r.prezzo * r.qta, 0);
-    apriStampa(ticketHtml({ tipo: "PRECONTO", tavolo: selezionato.nome, ora: oraNow(), locale: sessione.localeNome, operatore: sessione.staffNome, righe, totale }));
+    apriStampa(ticketHtml(ticketOpts("PRECONTO")));
+  };
+
+  const stampaCopia = () => {
+    if (!selezionato) return;
+    apriStampa(ticketHtml(ticketOpts("SCONTRINO")));
   };
 
   const paga = () => {
     if (!selezionato) return;
-    const righe = selezionato.ordini.map((o) => ({ nome: o.piatto.nome, qta: o.qta, prezzo: o.piatto.prezzo }));
-    const totale = righe.reduce((s, r) => s + r.prezzo * r.qta, 0);
+    const { righe, subtotale, sconto, scontoPct, manciaN, totale } = calcPay();
+    if (pay === "misto") {
+      const c = Number(mistoContanti) || 0;
+      const k = Number(mistoCarta) || 0;
+      if (Math.abs(c + k - totale) > 0.02) {
+        setPayMsg(`Misto: contanti+carta devono sommare ${totale.toFixed(2)} (ora ${(c + k).toFixed(2)})`);
+        return;
+      }
+    }
+    const split = buildSplitLines(totale);
+    if (splitMode === "custom" && split) {
+      const sum = split.reduce((a, x) => a + x.importo, 0);
+      if (Math.abs(sum - totale) > 0.05) {
+        setPayMsg(`Split: somma parti ${sum.toFixed(2)} ≠ totale ${totale.toFixed(2)}`);
+        return;
+      }
+    }
     useCassa.getState().emetti({
       tavolo: selezionato.nome,
       tavoloId: selezionato.id,
       righe,
-      coperti: selezionato.clienti || 2,
-      subtotale: totale,
-      sconto: 0,
+      coperti: selezionato.clienti || selezionato.posti || 2,
+      subtotale,
+      sconto,
+      scontoPct,
+      mancia: manciaN,
       totale,
       pagamento: pay,
+      mistoDettaglio: pay === "misto" ? { contanti: Number(mistoContanti) || 0, carta: Number(mistoCarta) || 0 } : undefined,
+      splitParti: split?.length,
+      splitDettaglio: split,
       operatore: sessione.staffNome,
+      riferimentoPos: posRef.trim() || undefined,
+      noteFiscali: noteSc.trim() || undefined,
     });
-    apriStampa(ticketHtml({ tipo: "SCONTRINO", tavolo: selezionato.nome, ora: oraNow(), locale: sessione.localeNome, righe, totale }));
+    apriStampa(ticketHtml(ticketOpts("SCONTRINO")));
     void useMenteStore.getState().chiudiTavolo(selezionato.id);
     setSelezionato(null);
     setComanda([]);
+    resetPayUi();
   };
 
   const top = topProdotti(scontriniCassa, 8);
@@ -228,7 +358,8 @@ export default function App() {
           <p className="font-black text-[12px] tracking-[0.2em]">{sessione.localeNome.toUpperCase()}</p>
           <p className="text-[9px] text-white/30">{online ? "LIVE" : "OFFLINE"} · {sessione.staffNome}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <SyncHeaderBadge />
           <button onClick={() => useAuth.getState().logout()} className="text-[9px] text-white/40">ESCI</button>
           <button onClick={() => setShowKds(true)} className="px-3 py-2 rounded-full bg-[#FF1A1A] text-black text-[10px] font-black">KDS</button>
         </div>
@@ -338,6 +469,33 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            <div className="rounded-[24px] glass-strong p-4 space-y-3">
+              <p className="text-[10px] tracking-widest text-white/45 font-black">REPORT / EXPORT</p>
+              <div className="flex flex-wrap gap-1.5">
+                {([["oggi", "Oggi"], ["7gg", "7 gg"], ["30gg", "30 gg"]] as [Periodo, string][]).map(([id, lab]) => (
+                  <button key={id} onClick={() => setDashPeriodo(id)} className={`px-3 py-1 rounded-full text-[10px] font-black ${dashPeriodo === id ? "bg-[#FF1A1A] text-black" : "glass"}`}>{lab}</button>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  const rows = filterScontriniPeriodo(scontriniCassa, dashPeriodo);
+                  if (!rows.length) { alert("Nessuna vendita nel periodo"); return; }
+                  downloadCsv(`vendite-${dashPeriodo}.csv`, buildVenditeCsv(rows));
+                }}
+                className="w-full py-3 rounded-full bg-white text-black font-black text-sm"
+              >CSV VENDITE</button>
+              <button
+                onClick={() => {
+                  const rows = filterScontriniPeriodo(scontriniCassa, dashPeriodo);
+                  if (!rows.length) { alert("Nessun dato per il report"); return; }
+                  const lab = dashPeriodo === "oggi" ? "Oggi" : dashPeriodo === "7gg" ? "7 giorni" : "30 giorni";
+                  stampaReportPeriodo(rows, lab);
+                }}
+                className="w-full py-3 rounded-full glass font-black text-sm"
+              >REPORT STAMPABILE</button>
+              <button onClick={() => setTab("cassa")} className="w-full py-2 text-[10px] text-white/40">Apri Cassa → Export chiusure / ASL</button>
+            </div>
           </div>
         )}
         {tab === "menu" && <MenuTab onAdd={() => {}} />}
@@ -408,21 +566,141 @@ export default function App() {
                 <button onClick={() => void inviaComanda()} className="w-full py-3 rounded-full bg-white text-black font-black">INVIA + STAMPA COMANDA</button>
               </div>
             )}
-            {selezionato.ordini.length > 0 && (
-              <div className="mt-3 space-y-2">
+            {selezionato.ordini.length > 0 && (() => {
+              const { subtotale, sconto, manciaN, totale } = calcPay();
+              const afterDisc = Math.max(0, subtotale - sconto);
+              const equalEach = splitMode === "equal" ? totale / Math.max(2, splitN) : 0;
+              return (
+              <div className="mt-3 space-y-3">
+                <p className="text-[10px] tracking-widest text-white/45 font-black">ORDINE TAVOLO</p>
                 {selezionato.ordini.map((o) => (
                   <div key={o.id}>
-                    <p className="text-sm text-white/60">{o.piatto.nome} x{o.qta}</p>
+                    <p className="text-sm text-white/60">{o.piatto.nome} x{o.qta} · €{(o.piatto.prezzo * o.qta).toFixed(2)}</p>
                     {o.note ? <p className="text-xs italic text-white/40">{o.note}</p> : null}
                   </div>
                 ))}
-                <div className="flex gap-2">{(["contanti", "carta", "satispay"] as Pagamento[]).map((p) => (
-                  <button key={p} onClick={() => setPay(p)} className={`flex-1 py-2 rounded-full text-[10px] font-black ${pay === p ? "bg-[#FF1A1A] text-black" : "glass"}`}>{p}</button>
-                ))}</div>
+
+                <div className="rounded-2xl glass p-3 space-y-2">
+                  <div className="flex justify-between text-sm"><span className="text-white/50">Subtotale</span><span className="font-black">€{subtotale.toFixed(2)}</span></div>
+                  <div className="flex gap-2 items-center">
+                    <span className="text-[10px] text-white/40 w-14">Sconto</span>
+                    <button onClick={() => setScontoMode("euro")} className={`px-2 py-1 rounded-full text-[9px] font-black ${scontoMode === "euro" ? "bg-[#FF1A1A] text-black" : "glass"}`}>€</button>
+                    <button onClick={() => setScontoMode("pct")} className={`px-2 py-1 rounded-full text-[9px] font-black ${scontoMode === "pct" ? "bg-[#FF1A1A] text-black" : "glass"}`}>%</button>
+                    <input type="number" value={scontoVal} onChange={(e) => setScontoVal(e.target.value)} className="flex-1 p-2 rounded-xl bg-black/40 text-sm" />
+                  </div>
+                  {sconto > 0 && <p className="text-[10px] text-white/40">−€{sconto.toFixed(2)}</p>}
+
+                  <div>
+                    <p className="text-[10px] text-white/40 mb-1">Mancia €</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { lab: "0", val: "0" },
+                        { lab: "5%", val: String(Math.round(afterDisc * 0.05 * 100) / 100) },
+                        { lab: "10%", val: String(Math.round(afterDisc * 0.1 * 100) / 100) },
+                        { lab: "Custom", val: "__custom__" },
+                      ].map((c) => (
+                        <button
+                          key={c.lab}
+                          onClick={() => {
+                            if (c.val === "__custom__") { setManciaCustom(true); return; }
+                            setManciaCustom(false);
+                            setMancia(c.val);
+                          }}
+                          className={`px-3 py-1.5 rounded-full text-[9px] font-black ${(!manciaCustom && mancia === c.val) || (c.val === "__custom__" && manciaCustom) ? "bg-[#FF1A1A] text-black" : "glass"}`}
+                        >{c.lab}</button>
+                      ))}
+                    </div>
+                    {manciaCustom && (
+                      <input type="number" value={mancia} onChange={(e) => setMancia(e.target.value)} className="w-full mt-2 p-2 rounded-xl bg-black/40 text-sm" placeholder="Importo mancia" />
+                    )}
+                  </div>
+
+                  <div className="flex justify-between text-base pt-1 border-t border-white/10">
+                    <span className="font-black">Totale finale</span>
+                    <span className="font-black text-[#FF1A1A]">€{totale.toFixed(2)}</span>
+                  </div>
+                  {manciaN > 0 && <p className="text-[10px] text-emerald-300">di cui mancia €{manciaN.toFixed(2)}</p>}
+                </div>
+
+                <div className="rounded-2xl glass p-3 space-y-2">
+                  <p className="text-[10px] text-white/40 font-black">SPLIT CONTO</p>
+                  <div className="flex gap-1.5">
+                    {([["none", "No"], ["equal", "Uguale"], ["custom", "Custom"]] as const).map(([id, lab]) => (
+                      <button key={id} onClick={() => setSplitMode(id)} className={`flex-1 py-2 rounded-full text-[9px] font-black ${splitMode === id ? "bg-[#FF1A1A] text-black" : "glass"}`}>{lab}</button>
+                    ))}
+                  </div>
+                  {splitMode === "equal" && (
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-white/40">N parti / coperti</label>
+                      <input type="number" min={2} max={12} value={splitN} onChange={(e) => setSplitN(Math.max(2, Number(e.target.value) || 2))} className="w-full p-2 rounded-xl bg-black/40 text-sm" />
+                      <p className="text-[11px] text-white/50">≈ €{equalEach.toFixed(2)} a testa</p>
+                    </div>
+                  )}
+                  {splitMode === "custom" && (
+                    <div className="space-y-2">
+                      {splitCustom.map((sp, idx) => (
+                        <div key={idx} className="grid grid-cols-[1fr_80px_90px] gap-1">
+                          <input value={sp.label} onChange={(e) => setSplitCustom((rows) => rows.map((r, i) => i === idx ? { ...r, label: e.target.value } : r))} className="p-2 rounded-xl bg-black/40 text-xs" />
+                          <input type="number" value={sp.importo || ""} onChange={(e) => setSplitCustom((rows) => rows.map((r, i) => i === idx ? { ...r, importo: Number(e.target.value) || 0 } : r))} className="p-2 rounded-xl bg-black/40 text-xs" placeholder="€" />
+                          <select value={sp.pagamento} onChange={(e) => setSplitCustom((rows) => rows.map((r, i) => i === idx ? { ...r, pagamento: e.target.value as Pagamento } : r))} className="p-2 rounded-xl bg-black/40 text-[10px]">
+                            {(["contanti", "carta", "satispay", "misto"] as Pagamento[]).map((p) => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                      <div className="flex gap-2">
+                        <button
+                          disabled={splitCustom.length >= 4}
+                          onClick={() => setSplitCustom((rows) => rows.length >= 4 ? rows : [...rows, { label: `Parte ${rows.length + 1}`, importo: 0, pagamento: "contanti" }])}
+                          className="flex-1 py-2 rounded-full glass text-[9px] font-black disabled:opacity-30"
+                        >+ PARTE</button>
+                        <button
+                          disabled={splitCustom.length <= 2}
+                          onClick={() => setSplitCustom((rows) => rows.length <= 2 ? rows : rows.slice(0, -1))}
+                          className="flex-1 py-2 rounded-full glass text-[9px] font-black disabled:opacity-30"
+                        >− PARTE</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-[10px] text-white/40 mb-1">Pagamento</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {(["contanti", "carta", "satispay", "misto"] as Pagamento[]).map((p) => (
+                      <button key={p} onClick={() => setPay(p)} className={`py-2 rounded-full text-[9px] font-black ${pay === p ? "bg-[#FF1A1A] text-black" : "glass"}`}>{p}</button>
+                    ))}
+                  </div>
+                  {pay === "misto" && (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <div>
+                        <label className="text-[9px] text-white/40">Contanti €</label>
+                        <input type="number" value={mistoContanti} onChange={(e) => setMistoContanti(e.target.value)} className="w-full p-2 rounded-xl bg-black/40 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-white/40">Carta €</label>
+                        <input type="number" value={mistoCarta} onChange={(e) => setMistoCarta(e.target.value)} className="w-full p-2 rounded-xl bg-black/40 text-sm" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-[9px] text-white/40">Codice autorizzazione POS (opz.)</label>
+                  <input value={posRef} onChange={(e) => setPosRef(e.target.value)} className="w-full mt-1 p-2 rounded-xl bg-black/40 text-sm" placeholder="Es. AUTH-48291" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-white/40">Note scontrino</label>
+                  <input value={noteSc} onChange={(e) => setNoteSc(e.target.value)} className="w-full mt-1 p-2 rounded-xl bg-black/40 text-sm" placeholder="Note fiscali / cliente" />
+                </div>
+
+                {payMsg && <p className="text-[11px] text-amber-300">{payMsg}</p>}
+
                 <button onClick={preconto} className="w-full py-3 rounded-full glass font-black text-sm">PRECONTO</button>
                 <button onClick={paga} className="w-full py-3 rounded-full bg-[#FF1A1A] text-black font-black">PAGA E CHIUDI</button>
+                <button onClick={stampaCopia} className="w-full py-3 rounded-full glass font-black text-sm">STAMPA COPIA</button>
               </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       )}
