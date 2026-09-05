@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { getLocale, updateLocaleSettings } from "@/lib/tenants";
 import { useCassa } from "@/lib/cassa";
+import { FiscalSettingsPanel } from "./fiscal-settings";
 
 export function SettingsPanel() {
   const sessione = useAuth((s) => s.sessione);
@@ -84,6 +85,9 @@ export function SettingsPanel() {
         >
           NUOVO LOCALE
         </button>
+      </div>
+      <div className="pt-2">
+        <FiscalSettingsPanel />
       </div>
     </div>
   );

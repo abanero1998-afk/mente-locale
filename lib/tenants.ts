@@ -4,6 +4,8 @@ export type LocaleSettings = {
   fondoIniziale?: number;
   waSocio?: string;
   nomeBrand?: string;
+  /** Bundle fiscale per locale (multi-tenant). */
+  fiscal?: import("./fiscal/types").FiscalBundle;
 };
 
 export type TenantStaff = {
@@ -145,6 +147,7 @@ export function updateLocaleSettings(
       ...(patch.fondoIniziale !== undefined ? { fondoIniziale: Number(patch.fondoIniziale) || 0 } : {}),
       ...(patch.waSocio !== undefined ? { waSocio: String(patch.waSocio).trim() } : {}),
       ...(patch.nomeBrand !== undefined ? { nomeBrand: String(patch.nomeBrand).trim() } : {}),
+      ...(patch.fiscal !== undefined ? { fiscal: patch.fiscal } : {}),
     },
   };
   if (patch.nome !== undefined && patch.nome.trim()) {

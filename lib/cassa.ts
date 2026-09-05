@@ -42,6 +42,11 @@ export type ScontrinoCassa = {
   stato?: "emesso" | "annullato";
   riferimentoPos?: string;
   noteFiscali?: string;
+  /** true se emesso via RT (o demo vendor). */
+  fiscale?: boolean;
+  rtProtocollo?: string;
+  partitaIva?: string;
+  ragioneSociale?: string;
   motivoAnnullamento?: string;
 };
 

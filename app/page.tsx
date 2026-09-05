@@ -22,6 +22,8 @@ import { LoginScreen } from "./login-screen";
 import { SettingsPanel } from "./settings-panel";
 import { SyncHeaderBadge } from "./sync-panel"; /* pay+sync+reports §5-7 */
 import { playUi } from "@/lib/sounds";
+import { emitScontrinoFiscale, getFiscalBundle, isFiscalRequired, useFiscal } from "@/lib/fiscal";
+import type { FiscalPagamento } from "@/lib/fiscal";
 
 type Tab = "dashboard" | "tavoli" | "menu" | "haccp" | "cassa";
 const MENU_FALLBACK: Piatto[] = [
@@ -155,6 +157,9 @@ export default function App() {
   const [posRef, setPosRef] = useState("");
   const [noteSc, setNoteSc] = useState("");
   const [payMsg, setPayMsg] = useState("");
+  const [fiscalBusy, setFiscalBusy] = useState(false);
+  const fiscalDemo = useFiscal((s) => s.demoNonFiscale);
+  const setFiscalDemo = useFiscal((s) => s.setDemoNonFiscale);
   const [dashPeriodo, setDashPeriodo] = useState<Periodo>("oggi");
   const [showKds, setShowKds] = useState(false);
   const [kdsFiltro, setKdsFiltro] = useState<Reparto>("cucina");
@@ -278,7 +283,10 @@ export default function App() {
     return splitCustom.slice(0, Math.max(2, Math.min(4, splitCustom.length)));
   };
 
-  const ticketOpts = (tipo: "PRECONTO" | "SCONTRINO") => {
+  const ticketOpts = (
+    tipo: "PRECONTO" | "SCONTRINO",
+    fiscalExtra?: { fiscale?: boolean; partitaIva?: string; ragioneSociale?: string; indirizzoFiscale?: string; rtProtocollo?: string }
+  ) => {
     const { righe, subtotale, sconto, manciaN, totale } = calcPay();
     const split = buildSplitLines(totale);
     return {
@@ -296,6 +304,7 @@ export default function App() {
       splitLines: split?.map((s) => ({ label: s.label, importo: s.importo, pagamento: s.pagamento })),
       riferimentoPos: posRef.trim() || undefined,
       noteFiscali: noteSc.trim() || undefined,
+      ...(fiscalExtra || {}),
     };
   };
 
@@ -324,8 +333,8 @@ export default function App() {
     apriStampa(ticketHtml(ticketOpts("SCONTRINO")));
   };
 
-  const paga = () => {
-    if (!selezionato) return;
+  const paga = async () => {
+    if (!selezionato || fiscalBusy) return;
     const { righe, subtotale, sconto, scontoPct, manciaN, totale } = calcPay();
     if (pay === "misto") {
       const c = Number(mistoContanti) || 0;
@@ -343,6 +352,56 @@ export default function App() {
         return;
       }
     }
+
+    const bundle = getFiscalBundle();
+    const needFiscal = isFiscalRequired(bundle);
+    let fiscale = false;
+    let rtProtocollo: string | undefined;
+    let partitaIva: string | undefined;
+    let ragioneSociale: string | undefined;
+    let indirizzoFiscale: string | undefined;
+
+    if (needFiscal) {
+      setFiscalBusy(true);
+      setPayMsg("Invio scontrino al Registratore Telematico…");
+      const pagamenti: FiscalPagamento[] =
+        pay === "misto"
+          ? [
+              { tipo: "contanti", importo: Number(mistoContanti) || 0 },
+              { tipo: "carta", importo: Number(mistoCarta) || 0 },
+            ]
+          : [{ tipo: pay, importo: totale }];
+      const fiscalRes = await emitScontrinoFiscale({
+        righe: righe.map((r) => ({
+          nome: r.nome,
+          qta: r.qta,
+          prezzo: r.prezzo,
+          aliquota: bundle.profilo.aliquotaDefault,
+          note: r.note,
+        })),
+        pagamenti,
+        profilo: bundle.profilo,
+        rt: bundle.rt,
+        operatore: sessione.staffNome,
+      });
+      setFiscalBusy(false);
+      if (!fiscalRes.ok) {
+        setPayMsg(
+          `Chiusura bloccata: scontrino fiscale non emesso. ${fiscalRes.error || "RT non raggiungibile"}. Attiva "modalità demo non fiscale" (solo titolare) solo per test.`
+        );
+        return;
+      }
+      fiscale = true;
+      rtProtocollo = fiscalRes.protocollo;
+      partitaIva = bundle.profilo.partitaIva;
+      ragioneSociale = bundle.profilo.ragioneSociale;
+      const addr = [bundle.profilo.indirizzo, bundle.profilo.cap, bundle.profilo.citta, bundle.profilo.provincia]
+        .filter(Boolean)
+        .join(", ");
+      indirizzoFiscale = addr || undefined;
+      setPayMsg("");
+    }
+
     useCassa.getState().emetti({
       tavolo: selezionato.nome,
       tavoloId: selezionato.id,
@@ -360,8 +419,22 @@ export default function App() {
       operatore: sessione.staffNome,
       riferimentoPos: posRef.trim() || undefined,
       noteFiscali: noteSc.trim() || undefined,
+      fiscale,
+      rtProtocollo,
+      partitaIva,
+      ragioneSociale,
     });
-    apriStampa(ticketHtml(ticketOpts("SCONTRINO")));
+    apriStampa(
+      ticketHtml(
+        ticketOpts("SCONTRINO", {
+          fiscale,
+          partitaIva,
+          ragioneSociale,
+          indirizzoFiscale,
+          rtProtocollo,
+        })
+      )
+    );
     void useMenteStore.getState().chiudiTavolo(selezionato.id);
     setSelezionato(null);
     setComanda([]);
@@ -724,8 +797,36 @@ export default function App() {
 
                 {payMsg && <p className="text-[11px] text-amber-300">{payMsg}</p>}
 
+                {sessione.ruolo === "titolare" && (
+                  <div className="rounded-2xl border border-amber-500/50 bg-amber-500/10 p-3 space-y-2">
+                    <p className="text-[11px] font-black text-amber-200">⚠ Modalità demo non fiscale</p>
+                    <p className="text-[10px] text-amber-100/80">
+                      Con profilo completo e RT abilitato, senza RT raggiungibile la chiusura è bloccata.
+                      Solo il titolare può attivare la demo (ticket non fiscale). Default produzione: fiscale obbligatorio.
+                    </p>
+                    <label className="flex items-center gap-2 text-[11px] text-amber-100">
+                      <input
+                        type="checkbox"
+                        checked={fiscalDemo}
+                        onChange={(e) => {
+                          setFiscalDemo(e.target.checked);
+                          useFiscal.getState().syncToTenant();
+                        }}
+                      />
+                      Consenti chiusura in modalità demo non fiscale
+                    </label>
+                  </div>
+                )}
+                {isFiscalRequired(getFiscalBundle()) && (
+                  <p className="text-[10px] text-white/40">Chiusura fiscale obbligatoria (RT). Preconto resta non fiscale.</p>
+                )}
+
                 <button onClick={preconto} className="w-full py-3 rounded-full glass font-black text-sm">PRECONTO</button>
-                <button onClick={() => { playUi("success"); paga(); }} className="w-full py-3 rounded-full bg-[#FF1A1A] text-black font-black">PAGA E CHIUDI</button>
+                <button
+                  disabled={fiscalBusy}
+                  onClick={() => { playUi("success"); void paga(); }}
+                  className="w-full py-3 rounded-full bg-[#FF1A1A] text-black font-black disabled:opacity-50"
+                >{fiscalBusy ? "FISCALE…" : "PAGA E CHIUDI"}</button>
                 <button onClick={stampaCopia} className="w-full py-3 rounded-full glass font-black text-sm">STAMPA COPIA</button>
               </div>
               );

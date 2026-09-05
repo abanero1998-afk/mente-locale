@@ -6,6 +6,7 @@ import { useCassa } from "./cassa";
 import { useLocaleStore, localeStoreDefaults } from "./locale-store";
 import { useMenteStore, menteStoreDefaults } from "./store";
 import { rebindSyncChannel } from "./sync";
+import { useFiscal, defaultFiscalBundle } from "./fiscal";
 
 /** Switch all persisted stores to a locale namespace and rehydrate. */
 export function activateLocale(localeId: string) {
@@ -22,6 +23,7 @@ export function activateLocale(localeId: string) {
     useMenteStore.setState({ ...menteStoreDefaults(), hydrated: false });
     useCassa.setState({ scontrini: [], chiusure: [], fondo: 150 });
     useLocaleStore.setState({ ...localeStoreDefaults() });
+    useFiscal.setState({ ...defaultFiscalBundle(), rtLastOnline: null, rtLastCheckTs: 0, hydrated: false });
   }
 
   const after = () => {
@@ -41,7 +43,11 @@ export function activateLocale(localeId: string) {
     Promise.resolve(useMenteStore.persist.rehydrate()),
     Promise.resolve(useCassa.persist.rehydrate()),
     Promise.resolve(useLocaleStore.persist.rehydrate()),
-  ]).then(after).catch(after);
+    Promise.resolve(useFiscal.persist.rehydrate()),
+  ]).then(() => {
+    useFiscal.getState().loadFromTenant();
+    after();
+  }).catch(after);
 }
 
 export function deactivateLocale() {
@@ -49,6 +55,7 @@ export function deactivateLocale() {
   useMenteStore.setState({ ...menteStoreDefaults(), hydrated: false });
   useCassa.setState({ scontrini: [], chiusure: [], fondo: 150 });
   useLocaleStore.setState({ ...localeStoreDefaults() });
+  useFiscal.setState({ ...defaultFiscalBundle(), rtLastOnline: null, rtLastCheckTs: 0, hydrated: false });
   rebindSyncChannel();
 }
 

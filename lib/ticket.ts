@@ -22,6 +22,12 @@ export function ticketHtml(opts: {
   riferimentoPos?: string;
   noteFiscali?: string;
   locale?: string;
+  /** Header fiscale (solo se RT ok / scontrino fiscale). */
+  fiscale?: boolean;
+  partitaIva?: string;
+  ragioneSociale?: string;
+  indirizzoFiscale?: string;
+  rtProtocollo?: string;
 }) {
   const righe = opts.righe
     .map((r) => {
@@ -59,15 +65,38 @@ export function ticketHtml(opts: {
   if (opts.noteFiscali?.trim()) {
     extras.push(`<div class="n">${esc(opts.noteFiscali.trim())}</div>`);
   }
+  if (opts.fiscale && opts.rtProtocollo?.trim()) {
+    extras.push(`<div class="m">Prot. RT: ${esc(opts.rtProtocollo.trim())}</div>`);
+  }
+
+  const isFiscalReceipt = !!opts.fiscale && opts.tipo === "SCONTRINO";
+  const brand = isFiscalReceipt && opts.ragioneSociale?.trim()
+    ? opts.ragioneSociale.trim()
+    : opts.locale || "MENTE LOCALE";
+
+  const fiscalHeader: string[] = [];
+  if (isFiscalReceipt) {
+    if (opts.partitaIva?.trim()) {
+      fiscalHeader.push(`<div class="m">P.IVA ${esc(opts.partitaIva.trim())}</div>`);
+    }
+    if (opts.indirizzoFiscale?.trim()) {
+      fiscalHeader.push(`<div class="m">${esc(opts.indirizzoFiscale.trim())}</div>`);
+    }
+  }
+
+  const footer = isFiscalReceipt
+    ? `<div class="m" style="margin-top:12px">Documento commerciale fiscale</div>`
+    : `<div class="m" style="margin-top:12px">Non fiscale</div>`;
 
   const tot = typeof opts.totale === "number" ? `<div class="tot">TOTALE €${opts.totale.toFixed(2)}</div>` : "";
   return `<!doctype html><html><head><meta charset="utf-8"/><title>${esc(opts.tipo)}</title>
 <style>body{font-family:ui-monospace,Menlo,monospace;width:280px;margin:12px}h1{font-size:16px;margin:0 0 6px}.m{font-size:11px}.r{font-size:13px;border-bottom:1px dashed #999;padding:4px 0}.n{font-size:11px;font-style:italic;opacity:.85;margin-top:2px}.tot{font-size:16px;font-weight:800;margin-top:10px}</style></head><body>
-<h1>${esc(opts.locale || "MENTE LOCALE")}</h1>
+<h1>${esc(brand)}</h1>
+${fiscalHeader.join("")}
 <div class="m">${esc(opts.tipo)}</div>
 <div class="m">${esc(opts.tavolo)} · ${esc(opts.ora)}${opts.operatore ? " · " + esc(opts.operatore) : ""}</div>
 <hr/>${righe}${extras.join("")}${tot}
-<div class="m" style="margin-top:12px">Non fiscale</div>
+${footer}
 <script>window.onload=()=>setTimeout(()=>window.print(),200)</script></body></html>`;
 }
 
