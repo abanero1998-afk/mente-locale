@@ -1,5 +1,5 @@
 import type { ScontrinoCassa } from "./cassa";
-import { scontrinoAttivo } from "./cassa";
+import { scontrinoAttivo } from "./cassa"; /* exclude voided §5 */
 
 export type TopProdotto = { nome: string; qta: number };
 export type OraPunta = { ora: number; label: string; count: number; totale: number };
