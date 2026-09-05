@@ -19,6 +19,7 @@ import { MenuTab, ProductThumb } from "./menu-tab";
 import { HaccpTab } from "./haccp-tab";
 import { CassaTab } from "./cassa-tab";
 import { LoginScreen } from "./login-screen";
+import { SettingsPanel } from "./settings-panel";
 import { SyncHeaderBadge } from "./sync-panel"; /* pay+sync+reports §5-7 */
 
 type Tab = "dashboard" | "tavoli" | "menu" | "haccp" | "cassa";
@@ -170,6 +171,11 @@ export default function App() {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {});
     wireSync();
   }, []);
+
+  useEffect(() => {
+    if (!sessione?.localeId) return;
+    void import("@/lib/tenant-runtime").then((m) => m.activateLocale(sessione.localeId));
+  }, [sessione?.localeId]);
 
   useEffect(() => {
     if (!selezionato) return;
@@ -360,6 +366,9 @@ export default function App() {
         </div>
         <div className="flex gap-2 items-center">
           <SyncHeaderBadge />
+          {sessione.ruolo === "titolare" && (
+            <button onClick={() => useAuth.getState().cambiaLocale()} className="text-[9px] text-white/40">CAMBIA LOCALE</button>
+          )}
           <button onClick={() => useAuth.getState().logout()} className="text-[9px] text-white/40">ESCI</button>
           <button onClick={() => setShowKds(true)} className="px-3 py-2 rounded-full bg-[#FF1A1A] text-black text-[10px] font-black">KDS</button>
         </div>
@@ -496,6 +505,8 @@ export default function App() {
               >REPORT STAMPABILE</button>
               <button onClick={() => setTab("cassa")} className="w-full py-2 text-[10px] text-white/40">Apri Cassa → Export chiusure / ASL</button>
             </div>
+
+            {sessione.ruolo === "titolare" && <SettingsPanel />}
           </div>
         )}
         {tab === "menu" && <MenuTab onAdd={() => {}} />}
