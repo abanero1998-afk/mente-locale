@@ -21,3 +21,21 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   filter: invert(1);
   opacity: 0.6;
 }
+
+
+@layer utilities {
+  .glass {
+    backdrop-filter: blur(40px);
+    background: rgba(255, 255, 255, 0.03);
+    border: 0.5px solid rgba(255, 26, 26, 0.08);
+  }
+  .glass-strong {
+    backdrop-filter: blur(60px);
+    background: rgba(0, 0, 0, 0.62);
+    border: 0.5px solid rgba(255, 26, 26, 0.12);
+  }
+  .nav-pill {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(8, 8, 8, 0.55));
+    border: 1px solid rgba(255, 70, 70, 0.28);
+  }
+}
