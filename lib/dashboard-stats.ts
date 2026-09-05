@@ -1,4 +1,5 @@
 import type { ScontrinoCassa } from "./cassa";
+import { scontrinoAttivo } from "./cassa";
 
 export type TopProdotto = { nome: string; qta: number };
 export type OraPunta = { ora: number; label: string; count: number; totale: number };
@@ -13,6 +14,7 @@ function dayKeyLocal(ts: number) {
 export function topProdotti(scontrini: ScontrinoCassa[], limit = 8): TopProdotto[] {
   const agg: Record<string, number> = {};
   for (const sc of scontrini) {
+    if (!scontrinoAttivo(sc)) continue;
     for (const r of sc.righe || []) {
       const nome = (r.nome || "").trim();
       if (!nome) continue;
@@ -34,6 +36,7 @@ export function topProdotti(scontrini: ScontrinoCassa[], limit = 8): TopProdotto
 export function orariPunta(scontrini: ScontrinoCassa[]): OraPunta[] {
   const buckets: Record<number, { count: number; totale: number }> = {};
   for (const sc of scontrini) {
+    if (!scontrinoAttivo(sc)) continue;
     const h = new Date(sc.ts).getHours();
     if (!buckets[h]) buckets[h] = { count: 0, totale: 0 };
     buckets[h].count += 1;
@@ -61,6 +64,7 @@ export function kpiOggi(scontrini: ScontrinoCassa[]): KpiOggi {
   let nScontrini = 0;
   let coperti = 0;
   for (const x of scontrini) {
+    if (!scontrinoAttivo(x)) continue;
     if (dayKeyLocal(x.ts) !== today) continue;
     nScontrini += 1;
     totale += Number(x.totale) || 0;
