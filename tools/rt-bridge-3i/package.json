@@ -1,0 +1,14 @@
+{
+  "name": "@mente-locale/rt-bridge-3i",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LAN HTTP bridge: browser → 3i Acapulco A8010V XON/XOFF TCP (porta 1723)",
+  "scripts": {
+    "start": "node server.mjs",
+    "probe": "node -e \"fetch('http://127.0.0.1:'+(process.env.BRIDGE_PORT||8787)+'/probe',{method:'POST'}).then(r=>r.json()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\""
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
