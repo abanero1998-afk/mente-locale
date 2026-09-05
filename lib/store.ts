@@ -112,7 +112,7 @@ type Store = {
   setOnline: (v: boolean) => void;
   applicaEvento: (e: SyncEvent) => void;
   pulse: (id: number) => void;
-  aggiungiOrdine: (tavoloId: number, piatto: Piatto, qta?: number) => Promise<Ordine>;
+  aggiungiOrdine: (tavoloId: number, piatto: Piatto, qta?: number, note?: string) => Promise<Ordine>;
   setOrdineStato: (ordineId: string, stato: StatoOrdine) => Promise<void>;
   chiudiTavolo: (id: number) => Promise<void>;
   aggiungiProdotto: (form: { nome: string; prezzo: string; categoria: string; reparto: Piatto["reparto"]; img: string }) => Promise<Piatto>;
@@ -197,8 +197,8 @@ export const useMenteStore = create<Store>()(
         if (e.kind === "prodotto_del") set((s) => ({ menu: s.menu.filter((p) => p.id !== e.prodottoId) }));
         if (e.kind === "avviso_socio") get().pushAvviso(e.msg, e.urgente);
       },
-      aggiungiOrdine: async (tavoloId, piatto, qta = 1) => {
-        const ordine: Ordine = { id: `${Date.now()}-${piatto.id}-${Math.random().toString(36).slice(2, 6)}`, piatto, qta, stato: "ordinato", ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) };
+      aggiungiOrdine: async (tavoloId, piatto, qta = 1, note) => {
+        const ordine: Ordine = { id: `${Date.now()}-${piatto.id}-${Math.random().toString(36).slice(2, 6)}`, piatto, qta, note: note?.trim() || undefined, stato: "ordinato", ora: new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) };
         set((s) => ({ tavoli: s.tavoli.map((t) => (t.id === tavoloId ? { ...t, ordini: [...t.ordini, ordine], stato: "occupato", animazione: "pulse" } : t)) }));
         get().pulse(tavoloId);
         const ev: SyncEvent = { kind: "nuovo_ordine", tavoloId, ordine, deviceId };
